@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+
+CORE="/opt/tixa/core/core.sh"
+
+if [[ ! -f "$CORE" ]]; then
+  echo "❌ Tixa is not installed on this server."
+  echo "Run: curl -fsSL https://raw.githubusercontent.com/<your-username>/tixa/main/install.sh | bash"
+  exit 1
+fi
+
+case "$1" in
+  create|list|delete)
+    shift
+    exec "$CORE" "$@"
+    ;;
+  *)
+    echo "Tixa commands:"
+    echo "  tixa create"
+    echo "  tixa list"
+    echo "  tixa delete <project>"
+    ;;
+esac
