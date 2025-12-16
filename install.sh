@@ -1,66 +1,52 @@
 #!/usr/bin/env bash
 set -e
 
-echo "======================================"
-echo " TIXA MEDIA PLATFORM INSTALLER"
-echo "======================================"
+REPO_DIR="/var/www/Project/tixa"
+BASE_DIR="/opt/tixa"
+CERTBOT_EMAIL_FILE="$BASE_DIR/.certbot_email"
 
-if [[ $EUID -ne 0 ]]; then
-  echo "❌ Please run as root"
-  exit 1
+echo "▶ Installing Tixa..."
+
+# Remove old install
+rm -rf "$BASE_DIR"
+mkdir -p "$BASE_DIR"
+
+# Copy runtime files
+cp -r "$REPO_DIR/cli" "$BASE_DIR/"
+cp -r "$REPO_DIR/core" "$BASE_DIR/"
+cp -r "$REPO_DIR/templates" "$BASE_DIR/"
+cp -r "$REPO_DIR/registry" "$BASE_DIR/"
+
+# Permissions
+chmod +x "$BASE_DIR/cli/"*
+chmod +x "$BASE_DIR/core/"*
+
+# Certbot email (ask only once)
+if [ ! -f "$CERTBOT_EMAIL_FILE" ]; then
+  echo ""
+  read -p "Enter email for SSL (Certbot): " CERTBOT_EMAIL
+
+  if [[ -z "$CERTBOT_EMAIL" ]]; then
+    echo "❌ Email is required for SSL certificates"
+    exit 1
+  fi
+
+  echo "$CERTBOT_EMAIL" > "$CERTBOT_EMAIL_FILE"
+  chmod 600 "$CERTBOT_EMAIL_FILE"
+  echo "✅ Certbot email saved"
+else
+  echo "✅ Certbot email already configured: $(cat "$CERTBOT_EMAIL_FILE")"
 fi
 
-read -rp "Enter email for SSL notifications (one-time): " CERT_EMAIL
-if [[ -z "$CERT_EMAIL" ]]; then
-  echo "❌ Email is required"
-  exit 1
+# Ensure registry file exists
+if [ ! -f "$BASE_DIR/registry/services.json" ]; then
+  echo "{}" > "$BASE_DIR/registry/services.json"
 fi
 
-echo "▶ Updating system..."
-apt update -y
-
-echo "▶ Installing system dependencies..."
-apt install -y \
-  nginx \
-  certbot \
-  python3-certbot-nginx \
-  python3 \
-  python3-venv \
-  ffmpeg \
-  libvips \
-  jq \
-  curl \
-  git
-
-echo "▶ Enabling nginx..."
-systemctl enable nginx
-systemctl start nginx
-
-echo "▶ Registering certbot account (one-time)..."
-certbot register \
-  --agree-tos \
-  -m "$CERT_EMAIL" \
-  --no-eff-email || true
-
-echo "▶ Installing Tixa core..."
-mkdir -p /opt/tixa
-cp -r "$(pwd)/core" /opt/tixa/
-
-mkdir -p /opt/tixa/registry
-[[ ! -f /opt/tixa/registry/services.json ]] && echo "{}" > /opt/tixa/registry/services.json
-
-chmod +x /opt/tixa/core/core.sh || true
-
-echo "▶ Installing Tixa CLI..."
-cp "$(pwd)/cli/tixa" /usr/local/bin/tixa
+# Install CLI launcher
+ln -sf "$REPO_DIR/cli/tixa" /usr/local/bin/tixa
 chmod +x /usr/local/bin/tixa
 
-echo "▶ Writing version..."
-echo "1.0.0" > /opt/tixa/version
-
 echo ""
-echo "✅ TIXA INSTALLED SUCCESSFULLY"
-echo "--------------------------------------"
-echo "Next step:"
-echo "  tixa create"
-echo "--------------------------------------"
+echo "✅ Tixa installed successfully"
+echo "Run: tixa"

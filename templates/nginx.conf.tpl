@@ -13,7 +13,7 @@ server {
 
     # Gzip compression
     gzip on;
-    gzip_types image/svg+xml application/json text/css application/javascript application/json;
+    gzip_types image/svg+xml text/css application/javascript;
 
     # ---------------------------
     # Originals (static files)
