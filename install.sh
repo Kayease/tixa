@@ -2,51 +2,67 @@
 set -e
 
 REPO_DIR="/var/www/Project/tixa"
-BASE_DIR="/opt/tixa"
-CERTBOT_EMAIL_FILE="$BASE_DIR/.certbot_email"
+RUNTIME_DIR="/opt/tixa"
+STATE_DIR="/var/lib/tixa"
+REGISTRY_FILE="$STATE_DIR/registry.json"
+SSL_EMAIL_FILE="$STATE_DIR/sslemail"
 
 echo "▶ Installing Tixa..."
 
-# Remove old install
-rm -rf "$BASE_DIR"
-mkdir -p "$BASE_DIR"
+# --------------------------------------------------
+# Persistent state (SAFE, never wiped on reinstall)
+# --------------------------------------------------
+mkdir -p "$STATE_DIR"
 
-# Copy runtime files
-cp -r "$REPO_DIR/cli" "$BASE_DIR/"
-cp -r "$REPO_DIR/core" "$BASE_DIR/"
-cp -r "$REPO_DIR/templates" "$BASE_DIR/"
-cp -r "$REPO_DIR/registry" "$BASE_DIR/"
+# Registry (create only if missing)
+if [ ! -f "$REGISTRY_FILE" ]; then
+  echo "{}" > "$REGISTRY_FILE"
+  chmod 600 "$REGISTRY_FILE"
+  echo "✅ Registry initialized"
+else
+  echo "✅ Registry exists"
+fi
 
-# Permissions
-chmod +x "$BASE_DIR/cli/"*
-chmod +x "$BASE_DIR/core/"*
-
-# Certbot email (ask only once)
-if [ ! -f "$CERTBOT_EMAIL_FILE" ]; then
+# SSL email (ask only if missing)
+if [ ! -f "$SSL_EMAIL_FILE" ]; then
   echo ""
-  read -p "Enter email for SSL (Certbot): " CERTBOT_EMAIL
+  read -p "Enter email for SSL (Certbot): " SSL_EMAIL
 
-  if [[ -z "$CERTBOT_EMAIL" ]]; then
-    echo "❌ Email is required for SSL certificates"
+  if [[ -z "$SSL_EMAIL" ]]; then
+    echo "❌ SSL email is required"
     exit 1
   fi
 
-  echo "$CERTBOT_EMAIL" > "$CERTBOT_EMAIL_FILE"
-  chmod 600 "$CERTBOT_EMAIL_FILE"
-  echo "✅ Certbot email saved"
+  echo "$SSL_EMAIL" > "$SSL_EMAIL_FILE"
+  chmod 600 "$SSL_EMAIL_FILE"
+  echo "✅ SSL email saved"
 else
-  echo "✅ Certbot email already configured: $(cat "$CERTBOT_EMAIL_FILE")"
+  echo "✅ SSL email already configured: $(cat "$SSL_EMAIL_FILE")"
 fi
 
-# Ensure registry file exists
-if [ ! -f "$BASE_DIR/registry/services.json" ]; then
-  echo "{}" > "$BASE_DIR/registry/services.json"
-fi
+# --------------------------------------------------
+# Runtime install (safe to replace)
+# --------------------------------------------------
+rm -rf "$RUNTIME_DIR"
+mkdir -p "$RUNTIME_DIR"
 
-# Install CLI launcher
+cp -r "$REPO_DIR/cli" "$RUNTIME_DIR/"
+cp -r "$REPO_DIR/core" "$RUNTIME_DIR/"
+cp -r "$REPO_DIR/templates" "$RUNTIME_DIR/"
+
+chmod +x "$RUNTIME_DIR/cli/"*
+chmod +x "$RUNTIME_DIR/core/"*
+
+# --------------------------------------------------
+# CLI launcher
+# --------------------------------------------------
 ln -sf "$REPO_DIR/cli/tixa" /usr/local/bin/tixa
 chmod +x /usr/local/bin/tixa
 
 echo ""
 echo "✅ Tixa installed successfully"
+echo "📂 State directory : $STATE_DIR"
+echo "📄 Registry file  : $REGISTRY_FILE"
+echo "📧 SSL email file : $SSL_EMAIL_FILE"
+echo ""
 echo "Run: tixa"

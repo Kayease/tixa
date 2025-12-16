@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-
 set -e
 
 BASE_DIR="/opt/tixa"
@@ -7,28 +6,47 @@ CMD="$1"
 
 case "$CMD" in
   create)
-    bash $BASE_DIR/core/create.sh
+    bash "$BASE_DIR/core/create.sh"
     ;;
   list)
-    bash $BASE_DIR/core/list.sh
+    bash "$BASE_DIR/core/list.sh"
     ;;
   delete)
-    bash $BASE_DIR/core/delete.sh "$2"
+    bash "$BASE_DIR/core/delete.sh" "$2"
     ;;
   verify)
-  shift
-  bash /opt/tixa/cli/verify.sh "$@"
-  ;;
+    shift
+    bash "$BASE_DIR/cli/verify.sh" "$@"
+    ;;
   ssl)
-  shift
-  bash /opt/tixa/cli/ssl.sh "$@"
-  ;;
+    shift
+    bash "$BASE_DIR/cli/ssl.sh" "$@"
+    ;;
+  sslemail)
+    shift
+    bash "$BASE_DIR/core/sslemail.sh" "$@"
+    ;;
+  uninstall)
+    shift
+    bash "$BASE_DIR/core/uninstall.sh" "$@"
+    ;;
   *)
     echo "TIXA · Media Service CLI"
     echo ""
     echo "Usage:"
-    echo "  tixa create        Create media service"
-    echo "  tixa list          List services"
-    echo "  tixa delete <name> Delete service"
+    echo "  tixa create                 Create a new media service"
+    echo "  tixa list                   List all services"
+    echo "  tixa verify <name>          Verify service"
+    echo "  tixa delete <name>          Delete service"
+    echo ""
+    echo "SSL:"
+    echo "  tixa sslemail set"
+    echo "  tixa sslemail show"
+    echo "  tixa ssl renew <name>"
+    echo "  tixa ssl renew --all"
+    echo ""
+    echo "Maintenance:"
+    echo "  tixa uninstall"
+    echo "  tixa uninstall --hard"
     ;;
 esac

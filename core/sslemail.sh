@@ -1,4 +1,3 @@
-root@srv1010579:/var/www/Project/tixa/core# cat sslemail.sh
 #!/usr/bin/env bash
 set -e
 
@@ -28,9 +27,13 @@ case "$1" in
       exit 1
     fi
 
-    echo "📧 SSL Email: $(cat "$EMAIL_FILE")"
+    echo ""
+    echo "📧 SSL Email"
+    echo "-----------------"
+    cat "$EMAIL_FILE"
     ;;
   *)
+    echo ""
     echo "Usage:"
     echo "  tixa sslemail set"
     echo "  tixa sslemail show"

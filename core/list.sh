@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
 
-REGISTRY="/opt/tixa/registry/services.json"
+set -e
+
+STATE_DIR="/var/lib/tixa"
+REGISTRY="$STATE_DIR/registry.json"
 
 echo ""
 echo "📦 TIXA · SERVICES"
 echo "--------------------------"
 
-COUNT=$(jq 'length' "$REGISTRY")
-
-if [ "$COUNT" -eq 0 ]; then
+# If registry does not exist or is empty
+if [ ! -f "$REGISTRY" ] || [ "$(jq 'length' "$REGISTRY")" -eq 0 ]; then
   echo "No services found."
   exit 0
 fi

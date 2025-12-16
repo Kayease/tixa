@@ -1,16 +1,25 @@
 #!/usr/bin/env bash
+set -e
 
-PROJECT=$1
+PROJECT="$1"
+
+STATE_DIR="/var/lib/tixa"
+REGISTRY="$STATE_DIR/registry.json"
 
 if [ -z "$PROJECT" ]; then
   echo "❌ Usage: tixa verify <project>"
   exit 1
 fi
 
-REGISTRY="/opt/tixa/registry/services.json"
+if [ ! -f "$REGISTRY" ]; then
+  echo "❌ Registry not found"
+  echo "👉 No services registered"
+  exit 1
+fi
 
 if ! jq -e ".\"$PROJECT\"" "$REGISTRY" >/dev/null; then
-  echo "❌ Project not found in registry"
+  echo "❌ Project '$PROJECT' not found"
+  echo "👉 Run: tixa list"
   exit 1
 fi
 
@@ -53,7 +62,7 @@ else
   echo "❌ nginx config NOT enabled"
 fi
 
-# health
+# internal health
 if curl -fs "http://127.0.0.1:$PORT/health" >/dev/null; then
   echo "✅ internal /health OK"
 else
