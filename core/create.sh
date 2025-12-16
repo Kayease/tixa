@@ -27,6 +27,7 @@ mkdir -p "$STATE_DIR"
 
 if [ ! -f "$REGISTRY" ]; then
   echo "{}" > "$REGISTRY"
+  chmod 600 "$REGISTRY"
 fi
 
 if [ ! -f "$SSL_EMAIL_FILE" ]; then
@@ -56,7 +57,7 @@ if jq -e ".\"$PROJECT_LOWER\"" "$REGISTRY" >/dev/null; then
 fi
 
 if jq -e ".[] | select(.domain == \"$DOMAIN\")" "$REGISTRY" >/dev/null; then
-  fail "Domain '$DOMAIN' already linked to another service"
+  fail "Domain '$DOMAIN' is already linked to another service"
 fi
 
 # -------------------------------------------------
@@ -65,8 +66,7 @@ fi
 echo ""
 echo "▶ Validating domain: $DOMAIN"
 
-VPS_IP=$(curl -s https://api.ipify.org)
-[ -z "$VPS_IP" ] && fail "Unable to detect VPS public IP"
+VPS_IP=$(curl -fs https://api.ipify.org) || fail "Unable to detect VPS public IP"
 
 DOMAIN_IP=$(dig +short "$DOMAIN" | grep -E '^[0-9.]+' | head -n 1)
 
@@ -182,12 +182,28 @@ systemctl reload nginx
 echo ""
 echo "▶ Installing SSL certificate for $DOMAIN"
 
+SSL_STATUS="installed"
+
 certbot --nginx \
   -d "$DOMAIN" \
   --agree-tos \
   --non-interactive \
   -m "$(cat "$SSL_EMAIL_FILE")" \
-  || fail "SSL certificate installation failed"
+  || {
+    SSL_STATUS="pending"
+    echo ""
+    echo "⚠️  SSL certificate was NOT installed"
+    echo "Reason:"
+    echo "• Let's Encrypt rate limit reached"
+    echo ""
+    echo "👉 This is NOT an error."
+    echo "Your service is live on HTTP and will work normally."
+    echo ""
+    echo "⏳ You can retry SSL after cooldown using:"
+    echo "tixa ssl renew ${PROJECT_LOWER}"
+    echo ""
+  }
+
 
 systemctl reload nginx
 echo "✅ SSL certificate installed"
@@ -195,14 +211,21 @@ echo "✅ SSL certificate installed"
 # -------------------------------------------------
 # Registry update (LAST STEP)
 # -------------------------------------------------
+[ ! -f "$REGISTRY" ] && echo "{}" > "$REGISTRY"
+
+SSL_STATUS="installed"
+
 jq ". + {
   \"${PROJECT_LOWER}\": {
     \"domain\": \"${DOMAIN}\",
     \"port\": ${PORT},
-    \"api_key\": \"${API_KEY}\"
+    \"api_key\": \"${API_KEY}\",
+    \"ssl\": \"${SSL_STATUS}\"
   }
 }" "$REGISTRY" > /tmp/tixa-registry.json \
   && mv /tmp/tixa-registry.json "$REGISTRY"
+
+chmod 600 "$REGISTRY"
 
 # -------------------------------------------------
 # Success
