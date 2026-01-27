@@ -132,7 +132,7 @@ python3 -m venv "/opt/${PROJECT_LOWER}-processor/venv"
 source "/opt/${PROJECT_LOWER}-processor/venv/bin/activate"
 
 pip install --upgrade pip
-pip install fastapi uvicorn python-multipart pyvips pillow pymupdf python-magic aiofiles
+pip install fastapi uvicorn python-multipart pyvips pillow pymupdf python-magic aiofiles numpy matplotlib
 
 deactivate
 

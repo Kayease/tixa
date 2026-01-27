@@ -26,6 +26,10 @@ case "$CMD" in
     shift
     bash "$BASE_DIR/core/sslemail.sh" "$@"
     ;;
+  update)
+    shift
+    bash "$BASE_DIR/core/update.sh" "$@"
+    ;;
   uninstall)
     shift
     bash "$BASE_DIR/core/uninstall.sh" "$@"
@@ -44,6 +48,11 @@ case "$CMD" in
     echo "  tixa sslemail show"
     echo "  tixa ssl renew <name>"
     echo "  tixa ssl renew --all"
+    echo ""
+    echo "Updates:"
+    echo "  tixa update <name>          Update specific service"
+    echo "  tixa update --all           Update all services"
+    echo "  tixa update --all --yes     Update all (skip confirmation)"
     echo ""
     echo "Maintenance:"
     echo "  tixa uninstall"
