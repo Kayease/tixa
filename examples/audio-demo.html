@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tixa Audio Processing Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: white;
+            text-align: center;
+            margin-bottom: 40px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .card {
+            background: white;
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 12px;
+            padding: 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f8f9ff;
+        }
+
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #f0f1ff;
+        }
+
+        .upload-area.dragover {
+            background: #e8e9ff;
+            border-color: #764ba2;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+            margin: 5px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .waveform-container {
+            margin: 20px 0;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        .waveform-container img {
+            width: 100%;
+            display: block;
+        }
+
+        audio {
+            width: 100%;
+            margin: 20px 0;
+            border-radius: 8px;
+        }
+
+        .color-picker {
+            display: flex;
+            gap: 10px;
+            margin: 15px 0;
+            flex-wrap: wrap;
+        }
+
+        .color-option {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 3px solid transparent;
+            transition: all 0.2s ease;
+        }
+
+        .color-option:hover {
+            transform: scale(1.1);
+        }
+
+        .color-option.selected {
+            border-color: white;
+            box-shadow: 0 0 0 2px #667eea;
+        }
+
+        .info-box {
+            background: #f8f9ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        .info-box p {
+            margin: 5px 0;
+            color: #333;
+        }
+
+        .info-box strong {
+            color: #667eea;
+        }
+
+        .format-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 15px 0;
+        }
+
+        .status {
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+            text-align: center;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .example-section {
+            background: #f8f9ff;
+            padding: 20px;
+            border-radius: 12px;
+            margin: 20px 0;
+        }
+
+        .example-section code {
+            background: #e8e9ff;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Tixa Audio Processing Demo</h1>
+
+        <!-- Upload Section -->
+        <div class="card">
+            <h2>1. Upload Audio File</h2>
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">🎵</div>
+                <p><strong>Click to upload</strong> or drag and drop</p>
+                <p style="color: #666; margin-top: 10px;">
+                    Supported: MP3, WAV, FLAC, AAC, OGG, M4A, WMA, OPUS, AIFF
+                </p>
+                <input type="file" id="fileInput" accept=".mp3,.wav,.flac,.aac,.ogg,.m4a,.wma,.opus,.aiff">
+            </div>
+            <div id="uploadStatus"></div>
+        </div>
+
+        <!-- Waveform Section -->
+        <div class="card" id="waveformSection" style="display: none;">
+            <h2>2. Waveform Visualization</h2>
+            <p>Choose a color for your waveform:</p>
+            <div class="color-picker">
+                <div class="color-option selected" data-color="blue" style="background: #3B82F6;" title="Blue"></div>
+                <div class="color-option" data-color="green" style="background: #10B981;" title="Green"></div>
+                <div class="color-option" data-color="red" style="background: #EF4444;" title="Red"></div>
+                <div class="color-option" data-color="purple" style="background: #8B5CF6;" title="Purple"></div>
+                <div class="color-option" data-color="orange" style="background: #F97316;" title="Orange"></div>
+                <div class="color-option" data-color="pink" style="background: #EC4899;" title="Pink"></div>
+                <div class="color-option" data-color="cyan" style="background: #06B6D4;" title="Cyan"></div>
+            </div>
+            <div class="waveform-container" id="waveformContainer"></div>
+        </div>
+
+        <!-- Audio Player Section -->
+        <div class="card" id="playerSection" style="display: none;">
+            <h2>3. Audio Player</h2>
+            <audio id="audioPlayer" controls></audio>
+        </div>
+
+        <!-- Metadata Section -->
+        <div class="card" id="metadataSection" style="display: none;">
+            <h2>4. Audio Metadata</h2>
+            <div class="info-box" id="metadataInfo"></div>
+        </div>
+
+        <!-- Format Conversion Section -->
+        <div class="card" id="conversionSection" style="display: none;">
+            <h2>5. Format Conversion</h2>
+            <p>Convert your audio to different formats:</p>
+            <div class="format-buttons">
+                <button onclick="convertAudio('mp3')">Convert to MP3</button>
+                <button onclick="convertAudio('wav')">Convert to WAV</button>
+                <button onclick="convertAudio('ogg')">Convert to OGG</button>
+                <button onclick="convertAudio('flac')">Convert to FLAC</button>
+                <button onclick="convertAudio('m4a')">Convert to M4A</button>
+            </div>
+            <div id="conversionStatus"></div>
+        </div>
+
+        <!-- API Examples Section -->
+        <div class="card">
+            <h2>📚 API Examples</h2>
+            <div class="example-section">
+                <h3 style="color: #667eea; margin-bottom: 10px;">Upload Audio</h3>
+                <code>POST /upload/podcasts</code>
+                <p style="margin-top: 10px;">Headers: <code>X-API-Key: your-api-key</code></p>
+            </div>
+            <div class="example-section">
+                <h3 style="color: #667eea; margin-bottom: 10px;">Generate Waveform</h3>
+                <code>GET /process/audio/waveform/800x200/podcasts/audio.mp3?color=blue</code>
+            </div>
+            <div class="example-section">
+                <h3 style="color: #667eea; margin-bottom: 10px;">Stream Audio</h3>
+                <code>GET /stream/audio/podcasts/audio.mp3</code>
+            </div>
+            <div class="example-section">
+                <h3 style="color: #667eea; margin-bottom: 10px;">Convert Format</h3>
+                <code>GET /process/audio/convert/mp3/podcasts/audio.wav?bitrate=320k</code>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration - UPDATE THESE VALUES
+        const API_BASE_URL = 'https://your-domain.com';
+        const API_KEY = 'your-api-key';
+        const SECTION = 'demo';
+
+        let currentAudioPath = null;
+        let selectedColor = 'blue';
+
+        // Upload Area
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+
+        uploadArea.addEventListener('click', () => fileInput.click());
+
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFileUpload(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileUpload(e.target.files[0]);
+            }
+        });
+
+        // Color Picker
+        document.querySelectorAll('.color-option').forEach(option => {
+            option.addEventListener('click', function() {
+                document.querySelectorAll('.color-option').forEach(o => o.classList.remove('selected'));
+                this.classList.add('selected');
+                selectedColor = this.dataset.color;
+                if (currentAudioPath) {
+                    loadWaveform(currentAudioPath, selectedColor);
+                }
+            });
+        });
+
+        async function handleFileUpload(file) {
+            const statusDiv = document.getElementById('uploadStatus');
+            statusDiv.innerHTML = '<div class="status info">Uploading... <span class="loading"></span></div>';
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/upload/${SECTION}`, {
+                    method: 'POST',
+                    headers: {
+                        'X-API-Key': API_KEY
+                    },
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    statusDiv.innerHTML = '<div class="status success">✓ Upload successful!</div>';
+                    currentAudioPath = data.section + '/' + data.file_name;
+                    
+                    // Show all sections
+                    document.getElementById('waveformSection').style.display = 'block';
+                    document.getElementById('playerSection').style.display = 'block';
+                    document.getElementById('metadataSection').style.display = 'block';
+                    document.getElementById('conversionSection').style.display = 'block';
+
+                    // Load waveform
+                    loadWaveform(currentAudioPath, selectedColor);
+
+                    // Load audio player
+                    loadAudioPlayer(currentAudioPath);
+
+                    // Load metadata
+                    loadMetadata(currentAudioPath);
+                } else {
+                    statusDiv.innerHTML = `<div class="status error">✗ Upload failed: ${data.detail}</div>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="status error">✗ Error: ${error.message}</div>`;
+            }
+        }
+
+        function loadWaveform(audioPath, color) {
+            const waveformUrl = `${API_BASE_URL}/process/audio/waveform/800x200/${audioPath}?color=${color}`;
+            document.getElementById('waveformContainer').innerHTML = `
+                <img src="${waveformUrl}" alt="Audio Waveform" />
+            `;
+        }
+
+        function loadAudioPlayer(audioPath) {
+            const streamUrl = `${API_BASE_URL}/stream/audio/${audioPath}`;
+            const audioPlayer = document.getElementById('audioPlayer');
+            audioPlayer.src = streamUrl;
+        }
+
+        async function loadMetadata(audioPath) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/info/${audioPath}`);
+                const data = await response.json();
+
+                let metadataHtml = `
+                    <p><strong>File Name:</strong> ${data.file_name}</p>
+                    <p><strong>File Size:</strong> ${data.file_size_mb} MB</p>
+                    <p><strong>File Type:</strong> ${data.file_type}</p>
+                `;
+
+                if (data.audio_metadata) {
+                    const audio = data.audio_metadata;
+                    metadataHtml += `
+                        <p><strong>Duration:</strong> ${audio.duration || 'N/A'}</p>
+                        <p><strong>Bitrate:</strong> ${audio.bitrate || 'N/A'} kbps</p>
+                        <p><strong>Codec:</strong> ${audio.codec || 'N/A'}</p>
+                        <p><strong>Sample Rate:</strong> ${audio.sample_rate || 'N/A'}</p>
+                        <p><strong>Channels:</strong> ${audio.channels || 'N/A'}</p>
+                    `;
+                }
+
+                document.getElementById('metadataInfo').innerHTML = metadataHtml;
+            } catch (error) {
+                document.getElementById('metadataInfo').innerHTML = `<p>Error loading metadata: ${error.message}</p>`;
+            }
+        }
+
+        async function convertAudio(format) {
+            if (!currentAudioPath) return;
+
+            const statusDiv = document.getElementById('conversionStatus');
+            statusDiv.innerHTML = '<div class="status info">Converting... <span class="loading"></span></div>';
+
+            const convertUrl = `${API_BASE_URL}/process/audio/convert/${format}/${currentAudioPath}?bitrate=192k`;
+
+            try {
+                const response = await fetch(convertUrl);
+                
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const downloadUrl = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = downloadUrl;
+                    a.download = `converted.${format}`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(downloadUrl);
+
+                    statusDiv.innerHTML = `<div class="status success">✓ Converted to ${format.toUpperCase()} and downloaded!</div>`;
+                } else {
+                    const error = await response.json();
+                    statusDiv.innerHTML = `<div class="status error">✗ Conversion failed: ${error.detail}</div>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<div class="status error">✗ Error: ${error.message}</div>`;
+            }
+        }
+    </script>
+</body>
+</html>

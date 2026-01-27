@@ -15,6 +15,12 @@ import fitz  # PyMuPDF for PDF processing
 from PIL import Image as PILImage
 import io
 import json
+import wave
+import struct
+import numpy as np
+from matplotlib import pyplot as plt
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 app = FastAPI(title="Advanced Media Processing Service")
 
@@ -41,8 +47,9 @@ SUPPORTED_IMAGE_FORMATS = {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.t
 SUPPORTED_VIDEO_FORMATS = {'.mp4', '.mov', '.avi', '.mkv', '.webm', '.flv', '.wmv', '.m4v', '.3gp'}
 SUPPORTED_PDF_FORMATS = {'.pdf'}
 SUPPORTED_DOCUMENT_FORMATS = {'.pdf', '.doc', '.docx', '.txt', '.rtf'}
+SUPPORTED_AUDIO_FORMATS = {'.mp3', '.wav', '.flac', '.aac', '.ogg', '.m4a', '.wma', '.opus', '.aiff', '.oga'}
 
-ALL_SUPPORTED_FORMATS = SUPPORTED_IMAGE_FORMATS.union(SUPPORTED_VIDEO_FORMATS).union(SUPPORTED_DOCUMENT_FORMATS)
+ALL_SUPPORTED_FORMATS = SUPPORTED_IMAGE_FORMATS.union(SUPPORTED_VIDEO_FORMATS).union(SUPPORTED_DOCUMENT_FORMATS).union(SUPPORTED_AUDIO_FORMATS)
 
 # ---------------------------
 # CORS
@@ -89,6 +96,8 @@ def get_file_type(filename: str) -> str:
         return "video"
     elif ext in SUPPORTED_PDF_FORMATS:
         return "pdf"
+    elif ext in SUPPORTED_AUDIO_FORMATS:
+        return "audio"
     elif ext in SUPPORTED_DOCUMENT_FORMATS:
         return "document"
     else:
@@ -150,6 +159,9 @@ async def upload_file(
     elif file_type == "pdf":
         processed_url = f"{VPS_BASE_URL}/process/pdf/thumbnail/300x300/{quote(section)}/{quote(filename)}"
         thumbnail_url = f"{VPS_BASE_URL}/process/pdf/thumbnail/150x150/{quote(section)}/{quote(filename)}"
+    elif file_type == "audio":
+        processed_url = f"{VPS_BASE_URL}/process/audio/waveform/800x200/{quote(section)}/{quote(filename)}"
+        thumbnail_url = f"{VPS_BASE_URL}/process/audio/waveform/400x100/{quote(section)}/{quote(filename)}"
     else:
         processed_url = original_url
         thumbnail_url = original_url
@@ -465,6 +477,277 @@ async def generate_pdf_preview(
         raise HTTPException(status_code=500, detail=f"PDF preview error: {str(e)}")
 
 # ---------------------------
+# Audio Processing - Waveform Generation
+# ---------------------------
+def _sanitize_audio_path(path_str: str) -> str:
+    """Remove audio extension from path if present"""
+    lower = path_str.lower()
+    for ext in SUPPORTED_AUDIO_FORMATS:
+        if lower.endswith(ext):
+            return path_str[: -len(ext)]
+    return path_str
+
+def _resolve_audio_original_path(base_dir: Path, safe_audio_path: str) -> Path:
+    """Find the actual audio file with any supported extension"""
+    candidate_stems = [safe_audio_path]
+    exts = list(SUPPORTED_AUDIO_FORMATS) + [ext.upper() for ext in SUPPORTED_AUDIO_FORMATS]
+    for ext in exts:
+        candidate = (base_dir / f"{safe_audio_path}{ext}").resolve()
+        if candidate.exists():
+            return candidate
+    direct = (base_dir / safe_audio_path).resolve()
+    if direct.exists():
+        return direct
+    raise FileNotFoundError
+
+@app.get("/process/audio/waveform/{size}/{audio_path:path}")
+async def generate_audio_waveform(
+    size: str,
+    audio_path: str,
+    color: str = Query("blue", description="Waveform color (blue, green, red, purple, orange)")
+):
+    """
+    Generate a waveform visualization for an audio file
+    """
+    try:
+        width_str, height_str = size.lower().split("x", 1)
+        width = int(width_str)
+        height = int(height_str)
+    except Exception:
+        raise HTTPException(status_code=422, detail="Invalid size format. Use {width}x{height}")
+
+    decoded_path = unquote(unquote(audio_path))
+    safe_audio_path = _sanitize_audio_path(decoded_path)
+
+    try:
+        original_full_path = _resolve_audio_original_path(ORIGINALS_DIR, safe_audio_path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Original audio file not found")
+
+    if not _safe_within_base(original_full_path):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    cache_full_path = (CACHE_DIR / f"audio_waveform_{width}x{height}_{color}_{safe_audio_path}.png").resolve()
+    cache_full_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if cache_full_path.exists():
+        return FileResponse(cache_full_path, media_type="image/png")
+
+    try:
+        ffmpeg_bin = _resolve_ffmpeg_binary()
+        
+        # Convert audio to raw PCM data using FFmpeg
+        temp_wav = tempfile.NamedTemporaryFile(suffix=".wav", delete=False)
+        temp_wav_path = temp_wav.name
+        temp_wav.close()
+        
+        command = [
+            ffmpeg_bin, "-i", str(original_full_path),
+            "-ac", "1",  # Convert to mono
+            "-ar", "8000",  # Sample rate 8kHz for faster processing
+            "-f", "wav",
+            "-y",
+            temp_wav_path
+        ]
+        
+        result = subprocess.run(command, capture_output=True, text=True, timeout=30)
+        
+        if result.returncode != 0:
+            raise Exception(f"FFmpeg error: {result.stderr}")
+        
+        # Read WAV file and extract audio data
+        with wave.open(temp_wav_path, 'r') as wav_file:
+            frames = wav_file.readframes(wav_file.getnframes())
+            sample_width = wav_file.getsampwidth()
+            
+            # Convert bytes to numpy array
+            if sample_width == 1:
+                dtype = np.uint8
+            elif sample_width == 2:
+                dtype = np.int16
+            else:
+                dtype = np.int32
+            
+            audio_data = np.frombuffer(frames, dtype=dtype)
+        
+        # Clean up temp file
+        os.unlink(temp_wav_path)
+        
+        # Downsample for visualization
+        samples_per_pixel = max(1, len(audio_data) // width)
+        downsampled = []
+        
+        for i in range(0, len(audio_data), samples_per_pixel):
+            chunk = audio_data[i:i + samples_per_pixel]
+            if len(chunk) > 0:
+                downsampled.append(np.mean(chunk))
+        
+        downsampled = np.array(downsampled)
+        
+        # Normalize
+        if len(downsampled) > 0:
+            max_val = np.max(np.abs(downsampled))
+            if max_val > 0:
+                downsampled = downsampled / max_val
+        
+        # Color mapping
+        color_map = {
+            "blue": "#3B82F6",
+            "green": "#10B981",
+            "red": "#EF4444",
+            "purple": "#8B5CF6",
+            "orange": "#F97316",
+            "pink": "#EC4899",
+            "cyan": "#06B6D4"
+        }
+        waveform_color = color_map.get(color.lower(), "#3B82F6")
+        
+        # Create waveform visualization
+        fig = Figure(figsize=(width/100, height/100), dpi=100)
+        canvas = FigureCanvasAgg(fig)
+        ax = fig.add_subplot(111)
+        
+        # Plot waveform
+        x = np.linspace(0, len(downsampled), len(downsampled))
+        ax.fill_between(x, downsampled, 0, color=waveform_color, alpha=0.7)
+        ax.plot(x, downsampled, color=waveform_color, linewidth=0.5)
+        
+        # Style
+        ax.set_ylim(-1, 1)
+        ax.set_xlim(0, len(downsampled))
+        ax.axis('off')
+        fig.patch.set_facecolor('#1F2937')
+        ax.set_facecolor('#1F2937')
+        
+        # Remove margins
+        fig.tight_layout(pad=0)
+        
+        # Save to file
+        canvas.print_png(str(cache_full_path))
+        
+        return FileResponse(cache_full_path, media_type="image/png")
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Audio waveform generation error: {str(e)}")
+
+# ---------------------------
+# Audio Streaming
+# ---------------------------
+@app.get("/stream/audio/{audio_path:path}")
+async def stream_audio(audio_path: str):
+    """
+    Stream audio file with proper headers for browser playback
+    """
+    decoded_path = unquote(unquote(audio_path))
+    original_full_path = (ORIGINALS_DIR / decoded_path).resolve()
+
+    if not _safe_within_base(original_full_path):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    if not original_full_path.exists():
+        raise HTTPException(status_code=404, detail="Audio file not found")
+
+    # Determine MIME type
+    file_ext = original_full_path.suffix.lower()
+    mime_types = {
+        '.mp3': 'audio/mpeg',
+        '.wav': 'audio/wav',
+        '.ogg': 'audio/ogg',
+        '.oga': 'audio/ogg',
+        '.flac': 'audio/flac',
+        '.m4a': 'audio/mp4',
+        '.aac': 'audio/aac',
+        '.opus': 'audio/opus',
+        '.wma': 'audio/x-ms-wma',
+        '.aiff': 'audio/aiff'
+    }
+    
+    media_type = mime_types.get(file_ext, 'audio/mpeg')
+    
+    return FileResponse(
+        original_full_path,
+        media_type=media_type,
+        headers={
+            "Accept-Ranges": "bytes",
+            "Content-Disposition": f'inline; filename="{original_full_path.name}"'
+        }
+    )
+
+# ---------------------------
+# Audio Format Conversion
+# ---------------------------
+@app.get("/process/audio/convert/{format}/{audio_path:path}")
+async def convert_audio_format(
+    format: str,
+    audio_path: str,
+    bitrate: str = Query("192k", description="Audio bitrate (e.g., 128k, 192k, 320k)")
+):
+    """
+    Convert audio file to different format (mp3, wav, ogg, flac, m4a)
+    """
+    # Validate format
+    supported_output_formats = {'mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac'}
+    if format.lower() not in supported_output_formats:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported output format. Supported: {', '.join(supported_output_formats)}"
+        )
+
+    decoded_path = unquote(unquote(audio_path))
+    safe_audio_path = _sanitize_audio_path(decoded_path)
+
+    try:
+        original_full_path = _resolve_audio_original_path(ORIGINALS_DIR, safe_audio_path)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Original audio file not found")
+
+    if not _safe_within_base(original_full_path):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    # Create cache path for converted file
+    cache_full_path = (CACHE_DIR / f"audio_convert_{format}_{bitrate}_{safe_audio_path}.{format}").resolve()
+    cache_full_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if cache_full_path.exists():
+        mime_type = f"audio/{format}" if format != 'mp3' else "audio/mpeg"
+        return FileResponse(cache_full_path, media_type=mime_type)
+
+    try:
+        ffmpeg_bin = _resolve_ffmpeg_binary()
+        
+        # Build FFmpeg command based on output format
+        command = [ffmpeg_bin, "-i", str(original_full_path)]
+        
+        if format == 'mp3':
+            command.extend(["-codec:a", "libmp3lame", "-b:a", bitrate])
+        elif format == 'wav':
+            command.extend(["-codec:a", "pcm_s16le"])
+        elif format == 'ogg':
+            command.extend(["-codec:a", "libvorbis", "-b:a", bitrate])
+        elif format == 'flac':
+            command.extend(["-codec:a", "flac"])
+        elif format == 'm4a':
+            command.extend(["-codec:a", "aac", "-b:a", bitrate])
+        elif format == 'aac':
+            command.extend(["-codec:a", "aac", "-b:a", bitrate])
+        
+        command.extend(["-y", str(cache_full_path)])
+        
+        result = subprocess.run(command, capture_output=True, text=True, timeout=60)
+        
+        if result.returncode != 0:
+            raise Exception(f"FFmpeg conversion error: {result.stderr}")
+        
+        mime_type = f"audio/{format}" if format != 'mp3' else "audio/mpeg"
+        return FileResponse(
+            cache_full_path,
+            media_type=mime_type,
+            headers={"Content-Disposition": f'attachment; filename="converted.{format}"'}
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Audio conversion error: {str(e)}")
+
+# ---------------------------
 # File Information Endpoint
 # ---------------------------
 @app.get("/info/{file_path:path}")
@@ -526,6 +809,54 @@ async def get_file_info(file_path: str):
                 info["video_info"] = "Available (needs parsing)"
             except Exception:
                 pass
+
+        elif file_type == "audio":
+            try:
+                ffmpeg_bin = _resolve_ffmpeg_binary()
+                command = [
+                    ffmpeg_bin, "-i", str(original_full_path),
+                    "-hide_banner"
+                ]
+                result = subprocess.run(command, capture_output=True, text=True, timeout=10)
+                
+                # Parse audio metadata from FFmpeg output
+                audio_info = {}
+                stderr = result.stderr
+                
+                # Extract duration
+                if "Duration:" in stderr:
+                    duration_line = [line for line in stderr.split('\n') if 'Duration:' in line]
+                    if duration_line:
+                        duration_str = duration_line[0].split('Duration:')[1].split(',')[0].strip()
+                        audio_info["duration"] = duration_str
+                
+                # Extract bitrate
+                if "bitrate:" in stderr:
+                    bitrate_parts = stderr.split('bitrate:')[1].split()[0]
+                    audio_info["bitrate"] = bitrate_parts
+                
+                # Extract sample rate and channels
+                if "Audio:" in stderr:
+                    audio_line = [line for line in stderr.split('\n') if 'Audio:' in line]
+                    if audio_line:
+                        audio_details = audio_line[0]
+                        # Extract codec
+                        if "Audio:" in audio_details:
+                            codec = audio_details.split('Audio:')[1].split(',')[0].strip()
+                            audio_info["codec"] = codec
+                        # Extract sample rate
+                        if "Hz" in audio_details:
+                            sample_rate = audio_details.split('Hz')[0].split()[-1]
+                            audio_info["sample_rate"] = f"{sample_rate} Hz"
+                        # Extract channels
+                        if "stereo" in audio_details.lower():
+                            audio_info["channels"] = "stereo"
+                        elif "mono" in audio_details.lower():
+                            audio_info["channels"] = "mono"
+                
+                info["audio_metadata"] = audio_info
+            except Exception as e:
+                info["audio_metadata"] = {"error": str(e)}
 
         return info
 
@@ -694,6 +1025,9 @@ async def list_files(
                     elif file_type == "pdf":
                         processed_url = f"{VPS_BASE_URL}/process/pdf/thumbnail/300x300/{quote(str(file_url_path))}"
                         thumbnail_url = f"{VPS_BASE_URL}/process/pdf/thumbnail/150x150/{quote(str(file_url_path))}"
+                    elif file_type == "audio":
+                        processed_url = f"{VPS_BASE_URL}/process/audio/waveform/800x200/{quote(str(file_url_path))}"
+                        thumbnail_url = f"{VPS_BASE_URL}/process/audio/waveform/400x100/{quote(str(file_url_path))}"
                     else:
                         processed_url = original_url
                         thumbnail_url = original_url
@@ -817,10 +1151,11 @@ async def list_sections(api_key: str = Depends(verify_api_key)):
 async def health_check():
     return {
         "status": "healthy",
-        "service": "Impexinfo Media Processor",
+        "service": "Media Processor",
         "supported_formats": {
             "images": list(SUPPORTED_IMAGE_FORMATS),
             "videos": list(SUPPORTED_VIDEO_FORMATS),
-            "documents": list(SUPPORTED_DOCUMENT_FORMATS)
+            "documents": list(SUPPORTED_DOCUMENT_FORMATS),
+            "audio": list(SUPPORTED_AUDIO_FORMATS)
         }
     }
