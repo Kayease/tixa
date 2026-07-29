@@ -295,11 +295,17 @@ async def generate_video_thumbnail(
     timestamp: str = Query("00:00:01", description="Timestamp for thumbnail (HH:MM:SS)")
 ):
     try:
-        width_str, height_str = size.lower().split("x", 1)
-        width = int(width_str)
-        height = int(height_str)
+        normalized_size = size.lower()
+        if "x" in normalized_size:
+            width_str, height_str = normalized_size.split("x", 1)
+            width = int(width_str)
+            height = int(height_str)
+        else:
+            width = height = int(normalized_size)
+        if width < 1 or height < 1 or width > 4096 or height > 4096:
+            raise ValueError
     except Exception:
-        raise HTTPException(status_code=422, detail="Invalid size format. Use {width}x{height}")
+        raise HTTPException(status_code=422, detail="Invalid size. Use {size} or {width}x{height} (maximum 4096)")
 
     decoded_path = unquote(unquote(video_path))
     safe_video_path = _sanitize_video_path(decoded_path)
@@ -315,8 +321,13 @@ async def generate_video_thumbnail(
     cache_full_path = (CACHE_DIR / f"video_thumb_{width}x{height}_{safe_video_path}.jpg").resolve()
     cache_full_path.parent.mkdir(parents=True, exist_ok=True)
 
+    response_headers = {
+        "Content-Disposition": f'inline; filename="video-thumbnail-{width}x{height}.jpg"',
+        "X-Content-Type-Options": "nosniff",
+    }
+
     if cache_full_path.exists():
-        return FileResponse(cache_full_path, media_type="image/jpeg")
+        return FileResponse(cache_full_path, media_type="image/jpeg", headers=response_headers)
 
     try:
         ffmpeg_bin = _resolve_ffmpeg_binary()
@@ -334,7 +345,7 @@ async def generate_video_thumbnail(
         if result.returncode != 0:
             raise Exception(f"FFmpeg error: {result.stderr}")
 
-        return FileResponse(cache_full_path, media_type="image/jpeg")
+        return FileResponse(cache_full_path, media_type="image/jpeg", headers=response_headers)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Video thumbnail error: {str(e)}")
 

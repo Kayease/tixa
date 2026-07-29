@@ -24,6 +24,9 @@ if [ "$(id -u)" -ne 0 ]; then
   fail "Run this command as root: sudo tixa create"
 fi
 
+bash "$BASE_DIR/core/doctor.sh" --quiet || \
+  fail "Server compatibility check failed. Run: sudo tixa doctor"
+
 for COMMAND in jq curl dig openssl python3 nginx certbot systemctl; do
   command -v "$COMMAND" >/dev/null 2>&1 || \
     fail "Missing required command '$COMMAND'. Re-run the latest Tixa installer."
@@ -72,6 +75,14 @@ fi
 
 if [[ "$DOMAIN" == *.local ]]; then
   fail ".local domains cannot receive public Let's Encrypt certificates. Use a real public domain."
+fi
+
+if nginx -T 2>&1 | grep -E "server_name[[:space:]].*\b${DOMAIN//./\.}\b" >/dev/null; then
+  fail "Domain '$DOMAIN' already exists in an Nginx configuration"
+fi
+
+if [ -e "/etc/letsencrypt/live/$DOMAIN" ]; then
+  fail "A locally managed certificate already exists for '$DOMAIN'; resolve it before Tixa takes ownership"
 fi
 
 # -------------------------------------------------

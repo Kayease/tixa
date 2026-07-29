@@ -56,6 +56,18 @@ the VPS:
 sudo tixa create
 ```
 
+The installer and every `tixa create` run perform a fail-fast compatibility
+check. Run it manually at any time with:
+
+```bash
+sudo tixa doctor
+```
+
+It reports missing dependencies, lack of systemd, invalid Nginx configuration,
+unavailable Certbot Nginx support, occupied HTTP ports, and competing Apache,
+Caddy, or Lighttpd services. Tixa will not disable or reconfigure another web
+server automatically.
+
 ### Updating Tixa
 
 After new changes are pushed to the `main` branch, update the installed CLI and
@@ -65,6 +77,19 @@ templates, then deploy the new template to existing services:
 sudo tixa self-update
 sudo tixa update --all
 ```
+
+### Migrating a service
+
+To change both a service name and its domain, first point the new domain's DNS
+A record at the VPS, then run:
+
+```bash
+sudo tixa migrate current-service
+```
+
+The migration preserves the API key and port, obtains the new certificate
+before cutover, renames the media storage folder and systemd service, verifies
+health, and keeps a rollback backup under `/var/backups/tixa-migrations`.
 
 ## Audio Support
 

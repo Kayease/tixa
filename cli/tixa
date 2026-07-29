@@ -8,11 +8,19 @@ case "$CMD" in
   create)
     bash "$BASE_DIR/core/create.sh"
     ;;
+  doctor)
+    shift
+    bash "$BASE_DIR/core/doctor.sh" "$@"
+    ;;
   list)
     bash "$BASE_DIR/core/list.sh"
     ;;
   delete)
     bash "$BASE_DIR/core/delete.sh" "$2"
+    ;;
+  migrate)
+    shift
+    bash "$BASE_DIR/core/migrate.sh" "$@"
     ;;
   verify)
     shift
@@ -43,9 +51,11 @@ case "$CMD" in
     echo ""
     echo "Usage:"
     echo "  tixa create                 Create a new media service"
+    echo "  tixa doctor                 Check VPS compatibility and dependencies"
     echo "  tixa list                   List all services"
     echo "  tixa verify <name>          Verify service"
     echo "  tixa delete <name>          Delete service"
+    echo "  tixa migrate <name>         Rename a service and migrate its domain"
     echo ""
     echo "SSL:"
     echo "  tixa sslemail set"

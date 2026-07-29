@@ -31,11 +31,25 @@ case "${ID:-}:${ID_LIKE:-}" in
     ;;
 esac
 
+# Reject incompatible hosts before installing or changing any packages.
+if [ ! -r /proc/1/comm ] || [ "$(</proc/1/comm)" != "systemd" ]; then
+  echo "Error: systemd is not running as PID 1. Tixa requires a systemd-based VPS."
+  exit 1
+fi
+
+for COMPETING_SERVICE in apache2 caddy lighttpd; do
+  if systemctl is-active --quiet "$COMPETING_SERVICE" 2>/dev/null; then
+    echo "Error: competing web server '$COMPETING_SERVICE' is active."
+    echo "Tixa manages Nginx and will not modify or disable an existing web server."
+    exit 1
+  fi
+done
+
 REQUIRED_PACKAGES=(
   python3 python3-pip python3-venv
   nginx certbot python3-certbot-nginx
   ffmpeg libvips-dev libmagic1
-  jq dnsutils curl openssl git ca-certificates
+  jq dnsutils curl openssl git ca-certificates iproute2 procps
 )
 MISSING_PACKAGES=()
 
@@ -60,6 +74,11 @@ if ! python3 -m venv --help >/dev/null 2>&1; then
 fi
 
 systemctl enable --now nginx
+
+if ! bash "$REPO_DIR/core/doctor.sh" --quiet; then
+  echo "Error: this server did not pass Tixa's compatibility check. No Tixa service was created."
+  exit 1
+fi
 
 for REQUIRED_DIR in cli core templates; do
   if [ ! -d "$REPO_DIR/$REQUIRED_DIR" ]; then
