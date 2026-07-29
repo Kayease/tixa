@@ -1,245 +1,401 @@
-# Tixa - Advanced Media Processing Service
+<div align="center">
 
-A comprehensive FastAPI-based media processing service that handles images, videos, PDFs, and **audio files** with advanced processing capabilities.
+# Tixa
+
+### Your media infrastructure, on your own VPS
+
+Self-hosted image, video, PDF, and audio processing with automatic HTTPS,
+on-demand transformations, caching, and a friendly server-management CLI.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-22c55e.svg)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.8%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-powered-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Platform](https://img.shields.io/badge/Platform-Ubuntu%20%7C%20Debian-E95420?logo=ubuntu&logoColor=white)](#requirements)
+
+**[Quick start](#quick-start) · [Features](#features) · [API](#api-reference) · [CLI](#cli-reference) · [Contributing](CONTRIBUTING.md)**
+
+</div>
+
+---
+
+## Why Tixa?
+
+Tixa turns a fresh VPS into a private media service. Upload an original once,
+then request resized images, thumbnails, video frames, PDF previews, audio
+waveforms, or converted audio through predictable URLs. Generated assets are
+cached on disk for fast repeat requests.
+
+- **Own your data** — files remain on infrastructure you control.
+- **No per-request fee** — Tixa is free and open source under the MIT License.
+- **Production setup included** — Nginx, systemd, API keys, and Let's Encrypt.
+- **Multiple services** — host separate projects and domains on one VPS.
+- **Simple operations** — create, verify, update, migrate, rotate keys, or remove
+  services from one CLI.
+
+You still pay your own VPS, domain, storage, and bandwidth costs.
 
 ## Features
 
-### 🖼️ Image Processing
-- Multiple format support (JPG, PNG, WebP, GIF, BMP, TIFF, SVG)
-- Dynamic resizing and optimization
-- Thumbnail generation with aspect ratio preservation
-- Format conversion with quality control
-- Powered by pyvips for high performance
+| Capability | What Tixa provides |
+|---|---|
+| Images | Resize, crop, optimize, thumbnail, and convert to WebP/JPEG/PNG |
+| Video | Extract cached JPEG thumbnails at a chosen timestamp with FFmpeg |
+| PDF | Generate page thumbnails and multi-page previews |
+| Audio | Stream, convert formats, extract metadata, and generate waveforms |
+| Storage | Original files plus separate derivative caches and thumbnails |
+| Delivery | Nginx reverse proxy, long-lived cache headers, and automatic HTTPS |
+| Security | Generated API keys, protected writes, and path traversal checks |
+| Operations | Health checks, backups, updates, migrations, and key rotation |
 
-### 🎬 Video Processing
-- Support for MP4, MOV, AVI, MKV, WebM, FLV, WMV, M4V, 3GP
-- Video thumbnail extraction at any timestamp
-- FFmpeg-powered processing
-- Automatic caching
+### Supported formats
 
-### 📄 PDF Processing
-- PDF thumbnail generation
-- Multi-page preview support
-- Page-specific rendering
-- Metadata extraction
+| Media | Formats |
+|---|---|
+| Images | JPG, JPEG, PNG, WebP, GIF, BMP, TIFF, TIF, SVG |
+| Video | MP4, MOV, AVI, MKV, WebM, FLV, WMV, M4V, 3GP |
+| Documents | PDF, DOC, DOCX, TXT, RTF |
+| Audio | MP3, WAV, FLAC, AAC, OGG, OGA, M4A, WMA, OPUS, AIFF |
 
-### 🎵 **Audio Processing** (NEW!)
-- **10 audio formats supported**: MP3, WAV, FLAC, AAC, OGG, M4A, WMA, OPUS, AIFF
-- **Waveform generation**: Visual audio representation with customizable colors
-- **Audio streaming**: Browser-compatible streaming with proper MIME types
-- **Format conversion**: Convert between formats on-the-fly with bitrate control
-- **Metadata extraction**: Duration, bitrate, codec, sample rate, channels
-- **Caching system**: Automatic caching for waveforms and conversions
+> Some document formats can be stored and listed, while PDF has dedicated
+> rendering endpoints.
 
-## Quick Start
+## Requirements
 
-### Installation
+Tixa currently targets a dedicated or compatible VPS with:
 
-1. Clone the repository:
+- Ubuntu or Debian
+- Root or `sudo` access
+- systemd running as PID 1
+- A public IPv4 address
+- A real domain with an `A` record pointing to the VPS
+- Inbound ports `80` and `443`
+- No active Apache, Caddy, or Lighttpd conflict
+
+The installer checks compatibility first, simulates package installation, and
+then installs only missing packages. It manages Python, Nginx, Certbot, FFmpeg,
+libvips, and supporting command-line tools.
+
+Tixa does not automatically stop or reconfigure another web server.
+
+## Quick start
+
+### 1. Point a domain to the VPS
+
+Create a public DNS record before creating a service:
+
+```text
+Type: A
+Name: img
+Value: YOUR_VPS_PUBLIC_IP
+```
+
+For example, `img.example.com` must resolve directly to the VPS. Private names
+such as `.local` cannot receive Let's Encrypt certificates.
+
+### 2. Install Tixa
+
 ```bash
 git clone https://github.com/Kayease/tixa.git
 cd tixa
-```
-
-2. Run the installer as root:
-```bash
 sudo bash install.sh
 ```
 
-The repository may be cloned anywhere. The installer detects its own location,
-installs missing Debian/Ubuntu system packages, copies the Tixa runtime to
-`/opt/tixa`, and preserves persistent state in `/var/lib/tixa`.
+The clone can be located anywhere. Runtime files are installed in `/opt/tixa`,
+while persistent state is stored separately in `/var/lib/tixa`.
 
-3. Create a service using a real public domain whose DNS A record points to
-the VPS:
-```bash
-sudo tixa create
-```
-
-The installer and every `tixa create` run perform a fail-fast compatibility
-check. Run it manually at any time with:
+### 3. Check the server
 
 ```bash
 sudo tixa doctor
 ```
 
-It reports missing dependencies, lack of systemd, invalid Nginx configuration,
-unavailable Certbot Nginx support, occupied HTTP ports, and competing Apache,
-Caddy, or Lighttpd services. Tixa will not disable or reconfigure another web
-server automatically.
+A compatible server reports:
 
-### Updating Tixa
+```text
+READY: this server is compatible with Tixa
+```
 
-After new changes are pushed to the `main` branch, update the installed CLI and
-templates, then deploy the new template to existing services:
+### 4. Create a service
 
 ```bash
+sudo tixa create
+```
+
+Enter a project name and domain, review the generated port and API key, then
+type `CREATE`. Tixa creates the Python environment, storage, systemd unit,
+Nginx site, and HTTPS certificate.
+
+### 5. Verify it
+
+```bash
+sudo tixa list
+sudo tixa verify your-project
+curl https://img.example.com/health
+```
+
+Interactive API documentation is available at:
+
+```text
+https://img.example.com/docs
+```
+
+## Five-minute API tour
+
+Set your service values:
+
+```bash
+export TIXA_URL="https://img.example.com"
+export TIXA_API_KEY="replace-with-your-api-key"
+```
+
+### Upload a file
+
+Uploads and deletes require the `X-API-Key` header:
+
+```bash
+curl -X POST "$TIXA_URL/upload/products" \
+  -H "X-API-Key: $TIXA_API_KEY" \
+  -F "file=@product.jpg"
+```
+
+The response includes the original, processed, and thumbnail URLs.
+
+### Resize an image
+
+```text
+GET /process/800/600/products/product.jpg?quality=85&format=webp
+```
+
+### Generate an image thumbnail
+
+```text
+GET /thumbnail/300/300/products/product.jpg
+```
+
+### Extract a video thumbnail
+
+Square shorthand:
+
+```text
+GET /process/video/thumbnail/300/videos/demo.mp4
+```
+
+Explicit dimensions and timestamp:
+
+```text
+GET /process/video/thumbnail/640x360/videos/demo.mp4?timestamp=00:00:05
+```
+
+The source path may end in `.mp4`, but the response is an inline JPEG with
+`Content-Type: image/jpeg`.
+
+### Generate a PDF thumbnail
+
+```text
+GET /process/pdf/thumbnail/600x800/documents/catalog.pdf?page=0
+```
+
+### Generate an audio waveform
+
+```text
+GET /process/audio/waveform/800x200/podcasts/episode.mp3?color=blue
+```
+
+### Stream or convert audio
+
+```text
+GET /stream/audio/podcasts/episode.mp3
+GET /process/audio/convert/mp3/podcasts/episode.wav?bitrate=320k
+```
+
+## API reference
+
+| Method | Endpoint | Purpose | API key |
+|---|---|---|---|
+| `POST` | `/upload/{section}` | Upload a supported file | Required |
+| `GET` | `/originals/{path}` | Serve an original file through Nginx | No |
+| `GET` | `/process/{width}/{height}/{path}` | Resize or convert an image | No |
+| `GET` | `/thumbnail/{width}/{height}/{path}` | Create an image thumbnail | No |
+| `GET` | `/process/video/thumbnail/{size}/{path}` | Extract a video frame | No |
+| `GET` | `/process/pdf/thumbnail/{size}/{path}` | Render a PDF page thumbnail | No |
+| `GET` | `/process/pdf/preview/{path}` | Generate a PDF preview | No |
+| `GET` | `/process/audio/waveform/{size}/{path}` | Generate an audio waveform | No |
+| `GET` | `/stream/audio/{path}` | Stream audio with the correct MIME type | No |
+| `GET` | `/process/audio/convert/{format}/{path}` | Convert and cache audio | No |
+| `GET` | `/info/{path}` | Read file and media metadata | No |
+| `GET` | `/list/{section}` | List files in a section | No |
+| `GET` | `/sections` | List storage sections | No |
+| `DELETE` | `/delete/{path}` | Delete an original and derivatives | Required |
+| `GET` | `/health` | Check service health | No |
+
+Use `/docs` on a running service for its generated OpenAPI interface. More
+audio examples are available in [AUDIO_SUPPORT.md](AUDIO_SUPPORT.md).
+
+## CLI reference
+
+### Service management
+
+| Command | Purpose |
+|---|---|
+| `sudo tixa doctor` | Check OS, packages, ports, web server, and SSL tooling |
+| `sudo tixa create` | Create a media service interactively |
+| `sudo tixa list` | List services, domains, ports, and API keys |
+| `sudo tixa verify NAME` | Verify systemd, Nginx, port, and health status |
+| `sudo tixa delete NAME` | Permanently delete a service and its media |
+| `sudo tixa migrate NAME` | Rename a service and migrate it to a new domain |
+
+### Updates and backups
+
+```bash
+# Update the CLI and templates
 sudo tixa self-update
+
+# Deploy the latest template to one service
+sudo tixa update my-service
+
+# Update every service
 sudo tixa update --all
-```
 
-To update without creating a rollback archive:
-
-```bash
-sudo tixa update service-name --skip-backup
+# Do not create a new rollback archive
+sudo tixa update my-service --skip-backup
 sudo tixa update --all --skip-backup
+
+# Non-interactive update
+sudo tixa update --all --skip-backup --yes
 ```
 
-Skipping backups saves disk space but removes Tixa's archive-based recovery
-option for that update.
+Update archives are stored under `/var/backups/tixa-updates`. Skipping a backup
+does not delete archives from earlier updates.
 
-### Rotating API keys
-
-Rotate the API key for one existing service or every registered service:
+### API keys and SSL
 
 ```bash
-sudo tixa apikey rotate service-name
+sudo tixa apikey rotate my-service
 sudo tixa apikey rotate --all
+sudo tixa sslemail show
+sudo tixa sslemail set
+sudo tixa ssl renew my-service
+sudo tixa ssl renew --all
 ```
 
-Use `--yes` for non-interactive automation. Rotation validates and restarts each
-service, checks its internal health endpoint, updates the registry only after a
-successful restart, and restores the previous key if validation fails.
+Key rotation validates and health-checks the service before committing the new
+key. A successful rotation immediately invalidates the previous key.
 
-### Migrating a service
+### Uninstall
 
-To change both a service name and its domain, first point the new domain's DNS
-A record at the VPS, then run:
+```bash
+# Remove only the Tixa CLI/runtime; keep services and state
+sudo tixa uninstall
+
+# Permanently remove Tixa, registered services, state, and media
+sudo tixa uninstall --hard
+```
+
+The hard uninstall and `tixa delete` are destructive. Back up originals first.
+
+## Service migration
+
+Point the new domain to the VPS, then run:
 
 ```bash
 sudo tixa migrate current-service
 ```
 
-The migration preserves the API key and port, obtains the new certificate
-before cutover, renames the media storage folder and systemd service, verifies
-health, and keeps a rollback backup under `/var/backups/tixa-migrations`.
+Migration preserves the API key and internal port, creates a validated runtime,
+obtains the new certificate before cutover, renames the media folder and
+systemd service, checks health, and retains a rollback copy under
+`/var/backups/tixa-migrations`.
 
-## Audio Support
+## Filesystem layout
 
-For detailed audio processing documentation, see [AUDIO_SUPPORT.md](./AUDIO_SUPPORT.md)
+```text
+/opt/tixa/                         Installed CLI and templates
+/var/lib/tixa/                     Persistent registry and SSL email
+/var/backups/tixa-updates/         Service update archives
+/var/backups/tixa-migrations/      Migration rollback copies
+/opt/<project>-processor/          Generated application and virtualenv
+/var/www/images/<project>/
+├── originals/                     Uploaded source files
+├── cache/                         Generated and converted assets
+└── thumbnails/                    Image thumbnails
+```
 
-### Quick Audio Examples
+## Architecture
 
-**Upload Audio:**
+```text
+Client
+  │ HTTPS
+  ▼
+Nginx + Let's Encrypt
+  ├── /originals/* ───────────────► Original file storage
+  └── API and processing routes
+                 │
+                 ▼
+          FastAPI service
+          ├── libvips ────────────► Images
+          ├── FFmpeg ─────────────► Video and audio
+          ├── PyMuPDF ────────────► PDF
+          └── cache directories ──► Reusable derivatives
+```
+
+Each project runs as its own systemd service on a generated local port.
+
+## Security notes
+
+- Keep `/var/lib/tixa/registry.json` private; it contains service API keys.
+- Upload and delete operations use `X-API-Key`; public read endpoints are
+  intentional for media delivery.
+- Rotate a key immediately if it appears in logs, screenshots, or chat.
+- Keep Ubuntu/Debian and Tixa updated.
+- Back up `/var/www/images` and `/var/lib/tixa` regularly.
+- Configure firewall access for SSH, HTTP, and HTTPS only as appropriate.
+- Tixa currently generates services that run as `root`; review this before
+  using Tixa in a high-security or multi-tenant environment.
+
+Please report vulnerabilities privately according to [SECURITY.md](SECURITY.md).
+
+## Troubleshooting
+
 ```bash
-curl -X POST "https://your-domain.com/upload/podcasts" \
-  -H "X-API-Key: your-api-key" \
-  -F "file=@audio.mp3"
+# General compatibility
+sudo tixa doctor
+
+# Service status
+sudo tixa verify my-service
+sudo systemctl status my-service-processor --no-pager -l
+
+# Recent application logs
+sudo journalctl -u my-service-processor -n 100 --no-pager
+
+# Nginx validation
+sudo nginx -t
+
+# Internal health check (use the port from tixa list)
+curl http://127.0.0.1:PORT/health
 ```
 
-**Generate Waveform:**
-```
-GET /process/audio/waveform/800x200/podcasts/audio.mp3?color=blue
-```
+When a public request fails but the internal health check succeeds, inspect
+Nginx, DNS, firewall, and any CDN cache in front of the VPS.
 
-**Stream Audio:**
-```html
-<audio controls>
-  <source src="https://your-domain.com/stream/audio/podcasts/audio.mp3">
-</audio>
-```
+## Documentation
 
-**Convert Format:**
-```
-GET /process/audio/convert/mp3/podcasts/audio.wav?bitrate=320k
-```
-
-## API Endpoints
-
-### Core Endpoints
-- `POST /upload/{section}` - Upload media files
-- `GET /originals/{path}` - Access original files
-- `DELETE /delete/{path}` - Delete files and cached derivatives
-
-### Image Endpoints
-- `GET /process/{width}/{height}/{path}` - Process images
-- `GET /thumbnail/{width}/{height}/{path}` - Generate thumbnails
-
-### Video Endpoints
-- `GET /process/video/thumbnail/{size}/{path}` - Video thumbnails
-
-### PDF Endpoints
-- `GET /process/pdf/thumbnail/{size}/{path}` - PDF thumbnails
-- `GET /process/pdf/preview/{path}` - Multi-page preview
-
-### Audio Endpoints (NEW!)
-- `GET /process/audio/waveform/{size}/{path}` - Generate waveform
-- `GET /stream/audio/{path}` - Stream audio
-- `GET /process/audio/convert/{format}/{path}` - Convert format
-
-### Utility Endpoints
-- `GET /info/{path}` - File information and metadata
-- `GET /list/{section}` - List files in section
-- `GET /sections` - List all sections
-- `GET /health` - Service health check
-
-## Supported Formats
-
-| Type | Formats |
-|------|---------|
-| **Images** | JPG, JPEG, PNG, WebP, GIF, BMP, TIFF, SVG |
-| **Videos** | MP4, MOV, AVI, MKV, WebM, FLV, WMV, M4V, 3GP |
-| **Documents** | PDF, DOC, DOCX, TXT, RTF |
-| **Audio** | MP3, WAV, FLAC, AAC, OGG, M4A, WMA, OPUS, AIFF |
-
-## Configuration
-
-The service uses environment variables and template placeholders:
-
-- `{{PROJECT}}` - Project name for file organization
-- `{{API_KEY}}` - API authentication key
-- `{{BASE_URL}}` - Base URL for generated URLs
-- `FFMPEG_BIN` - Custom FFmpeg binary path (optional)
-
-## Directory Structure
-
-```
-/var/www/images/{PROJECT}/
-├── originals/     # Original uploaded files
-├── cache/         # Processed files (images, video thumbnails, audio waveforms, conversions)
-└── thumbnails/    # Image thumbnails
-```
-
-## Security Features
-
-- API key authentication
-- Path traversal protection
-- Safe file handling
-- CORS support with configurable origins
-
-## Performance
-
-- **Caching**: All processed files are cached for instant subsequent access
-- **Lazy Processing**: Files are processed on-demand
-- **Efficient Storage**: Automatic cleanup of empty directories
-- **Optimized Libraries**: Uses pyvips for fast image processing
-
-## Use Cases
-
-- **Content Management Systems**: Centralized media storage and processing
-- **E-commerce Platforms**: Product images with dynamic sizing
-- **Podcast Platforms**: Audio hosting with waveform visualization
-- **Video Platforms**: Video thumbnails and previews
-- **Document Management**: PDF previews and thumbnails
-- **Music Libraries**: Audio streaming and format conversion
-
-## Requirements
-
-- Python 3.8+
-- FFmpeg (for video and audio processing)
-- libvips (for image processing)
-- See `requirements.txt` for Python dependencies
+- [Audio support](AUDIO_SUPPORT.md)
+- [Architecture](ARCHITECTURE.md)
+- [Installation details](INSTALLATION.md)
+- [Deployment guide](DEPLOYMENT_GUIDE.md)
+- [Update guide](UPDATE_GUIDE.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security policy](SECURITY.md)
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Bug reports, documentation improvements, and code contributions are welcome.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request and use the
+provided GitHub issue templates when possible.
 
 ## License
 
-[Your License Here]
+Tixa is free and open-source software licensed under the
+[MIT License](LICENSE).
 
-## Support
-
-For detailed audio processing documentation, see [AUDIO_SUPPORT.md](./AUDIO_SUPPORT.md)
-
-For issues and questions, please open an issue on GitHub.
+Copyright © 2026 Kayease.
