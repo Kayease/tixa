@@ -45,10 +45,26 @@ for COMPETING_SERVICE in apache2 caddy lighttpd; do
   fi
 done
 
+if command -v ss >/dev/null 2>&1; then
+  EXISTING_HTTP_LISTENERS="$(ss -ltnp 2>/dev/null | awk '$4 ~ /:80$|:443$/ {print}' || true)"
+  if [ -n "$EXISTING_HTTP_LISTENERS" ] && ! grep -q 'nginx' <<< "$EXISTING_HTTP_LISTENERS"; then
+    echo "Error: ports 80/443 are already used by a non-Nginx process:"
+    echo "$EXISTING_HTTP_LISTENERS"
+    echo "Tixa has not installed or changed any packages."
+    exit 1
+  fi
+fi
+
+if command -v nginx >/dev/null 2>&1 && ! nginx -t >/dev/null 2>&1; then
+  echo "Error: the existing Nginx configuration is invalid."
+  echo "Run 'sudo nginx -t' for details. Tixa has not changed any packages."
+  exit 1
+fi
+
 REQUIRED_PACKAGES=(
   python3 python3-pip python3-venv
   nginx certbot python3-certbot-nginx
-  ffmpeg libvips-dev libmagic1
+  ffmpeg libvips-tools libmagic1
   jq dnsutils curl openssl git ca-certificates iproute2 procps
 )
 MISSING_PACKAGES=()
@@ -60,9 +76,20 @@ for PACKAGE in "${REQUIRED_PACKAGES[@]}"; do
 done
 
 if [ "${#MISSING_PACKAGES[@]}" -gt 0 ]; then
-  echo "Installing required system packages: ${MISSING_PACKAGES[*]}"
+  echo "Checking package compatibility: ${MISSING_PACKAGES[*]}"
   export DEBIAN_FRONTEND=noninteractive
   apt-get update
+
+  APT_SIMULATION_LOG="$(mktemp /tmp/tixa-apt-check.XXXXXX)"
+  if ! apt-get install --simulate --no-install-recommends "${MISSING_PACKAGES[@]}" >"$APT_SIMULATION_LOG" 2>&1; then
+    echo "Error: required packages cannot be installed safely on this server:"
+    cat "$APT_SIMULATION_LOG"
+    rm -f "$APT_SIMULATION_LOG"
+    exit 1
+  fi
+  rm -f "$APT_SIMULATION_LOG"
+
+  echo "Compatibility passed. Installing missing packages: ${MISSING_PACKAGES[*]}"
   apt-get install -y --no-install-recommends "${MISSING_PACKAGES[@]}"
 else
   echo "All required system packages are already installed"
