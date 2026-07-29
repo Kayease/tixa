@@ -40,3 +40,26 @@ not a public issue.
 By contributing, you agree that your contribution will be licensed under the
 project's [MIT License](LICENSE).
 
+## Maintainer release process
+
+Tixa uses Semantic Versioning. To publish a release:
+
+1. Decide whether the change is major, minor, or patch.
+2. Update the root `VERSION` file without a leading `v`.
+3. Update user-facing documentation and verify the installer.
+4. Commit the release changes.
+5. Create an annotated Git tag with a leading `v`.
+6. Push the commit and tag, then create a GitHub Release from that tag.
+
+Example:
+
+```bash
+printf '0.2.0\n' > VERSION
+git add VERSION README.md
+git commit -m "release: v0.2.0"
+git tag -a v0.2.0 -m "Tixa v0.2.0"
+git push origin main
+git push origin v0.2.0
+```
+
+The tag and `VERSION` value must match. Do not move or reuse a published tag.

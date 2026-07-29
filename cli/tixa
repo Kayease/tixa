@@ -5,6 +5,13 @@ BASE_DIR="/opt/tixa"
 CMD="$1"
 
 case "$CMD" in
+  version|--version|-v)
+    if [ -f "$BASE_DIR/VERSION" ]; then
+      echo "Tixa $(cat "$BASE_DIR/VERSION")"
+    else
+      echo "Tixa version unknown"
+    fi
+    ;;
   create)
     bash "$BASE_DIR/core/create.sh"
     ;;
@@ -54,6 +61,7 @@ case "$CMD" in
     echo "TIXA · Media Service CLI"
     echo ""
     echo "Usage:"
+    echo "  tixa version                Show the installed Tixa version"
     echo "  tixa create                 Create a new media service"
     echo "  tixa doctor                 Check VPS compatibility and dependencies"
     echo "  tixa list                   List all services"

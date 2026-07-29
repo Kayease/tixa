@@ -114,6 +114,11 @@ for REQUIRED_DIR in cli core templates; do
   fi
 done
 
+if [ ! -f "$REPO_DIR/VERSION" ]; then
+  echo "Error: missing required file: $REPO_DIR/VERSION"
+  exit 1
+fi
+
 echo "▶ Installing Tixa..."
 echo ""
 
@@ -189,6 +194,7 @@ trap 'rm -rf "$STAGING_DIR"' EXIT
 cp -r "$REPO_DIR/cli" "$STAGING_DIR/"
 cp -r "$REPO_DIR/core" "$STAGING_DIR/"
 cp -r "$REPO_DIR/templates" "$STAGING_DIR/"
+cp "$REPO_DIR/VERSION" "$STAGING_DIR/VERSION"
 printf '%s\n' "${TIXA_REPO_URL:-https://github.com/Kayease/tixa.git}" > "$STAGING_DIR/repository-url"
 
 rm -rf "$RUNTIME_DIR"
@@ -197,6 +203,7 @@ mkdir -p "$RUNTIME_DIR"
 cp -r "$STAGING_DIR/cli" "$RUNTIME_DIR/"
 cp -r "$STAGING_DIR/core" "$RUNTIME_DIR/"
 cp -r "$STAGING_DIR/templates" "$RUNTIME_DIR/"
+cp "$STAGING_DIR/VERSION" "$RUNTIME_DIR/VERSION"
 cp "$STAGING_DIR/repository-url" "$RUNTIME_DIR/repository-url"
 
 chmod +x "$RUNTIME_DIR/cli/"*
@@ -219,6 +226,7 @@ echo "📄 Registry file  : $REGISTRY_FILE"
 echo "📧 SSL email file : $SSL_EMAIL_FILE"
 echo ""
 echo "Next steps:"
+echo "  tixa version"
 echo "  tixa create"
 echo ""
 echo "Run: tixa"

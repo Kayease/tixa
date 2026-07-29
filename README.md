@@ -265,6 +265,31 @@ audio examples are available in the [audio API guide](docs/audio-api.md).
 
 ## CLI reference
 
+### Version management
+
+Tixa follows [Semantic Versioning](https://semver.org/):
+
+- `MAJOR` for incompatible or breaking changes
+- `MINOR` for backward-compatible features
+- `PATCH` for backward-compatible fixes
+
+```bash
+# Show the installed version
+tixa version
+
+# Install the newest stable release
+sudo tixa self-update
+
+# Install a particular stable release
+sudo tixa self-update v1.2.0
+
+# Follow the development branch (less stable)
+sudo tixa self-update main
+```
+
+The repository's root `VERSION` file is the authoritative software version.
+Production installations should use release tags rather than `main`.
+
 ### Service management
 
 | Command | Purpose |
