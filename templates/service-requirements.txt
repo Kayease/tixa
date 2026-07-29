@@ -1,0 +1,30 @@
+# Dependency set for a generated Tixa media service.
+#
+# `tixa create`, `tixa migrate` and `tixa update` all install from this one
+# file, so a service's runtime is the same however it was produced.
+#
+# Every entry carries an upper bound. Installing unconstrained "latest" meant a
+# new upstream major release could break new service creation without any change
+# to Tixa itself — which is how FastAPI's removal of `Query(regex=...)` in
+# favour of `pattern=` would have landed. Raise these bounds deliberately, in a
+# Tixa release, after testing.
+
+# Core framework
+fastapi>=0.110,<1.0
+uvicorn[standard]>=0.27,<1.0
+python-multipart>=0.0.9,<1.0
+
+# Image processing
+pyvips>=2.2.1,<3.0
+pillow>=10.2,<12.0
+
+# PDF processing
+pymupdf>=1.24,<2.0
+
+# Audio waveform rendering
+numpy>=1.26,<3.0
+matplotlib>=3.8,<4.0
+
+# Utilities
+python-magic>=0.4.27,<0.5
+aiofiles>=23.2,<25.0

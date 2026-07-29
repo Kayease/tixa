@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+set -Eeuo pipefail
 
 # -------------------------------------------------
 # TIXA UPDATE - Safely update running services
@@ -10,6 +10,9 @@ STATE_DIR="/var/lib/tixa"
 REGISTRY="$STATE_DIR/registry.json"
 BACKUP_DIR="/var/backups/tixa-updates"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+
+# shellcheck source=/opt/tixa/core/common.sh
+source "$BASE_DIR/core/common.sh"
 
 # -------------------------------------------------
 # Colors
@@ -23,21 +26,10 @@ NC='\033[0m' # No Color
 # -------------------------------------------------
 # Helpers
 # -------------------------------------------------
-log_info() {
-  echo -e "${BLUE}▶${NC} $1"
-}
-
-log_success() {
-  echo -e "${GREEN}✓${NC} $1"
-}
-
-log_warning() {
-  echo -e "${YELLOW}⚠${NC} $1"
-}
-
-log_error() {
-  echo -e "${RED}✗${NC} $1"
-}
+log_info()    { echo -e "${BLUE}▶${NC} $1"; }
+log_success() { echo -e "${GREEN}✓${NC} $1"; }
+log_warning() { echo -e "${YELLOW}⚠${NC} $1"; }
+log_error()   { echo -e "${RED}✗${NC} $1"; }
 
 fail() {
   echo ""
@@ -46,6 +38,8 @@ fail() {
   exit 1
 }
 
+[ "$(id -u)" -eq 0 ] || fail "Run this command as root: sudo tixa update"
+
 # -------------------------------------------------
 # Startup checks
 # -------------------------------------------------
@@ -53,34 +47,31 @@ if [ ! -f "$REGISTRY" ]; then
   fail "No services found. Registry file does not exist."
 fi
 
-# Create backup directory
+REQUIREMENTS_FILE="$BASE_DIR/templates/service-requirements.txt"
+if [ ! -f "$BASE_DIR/templates/main.py" ]; then
+  fail "Template file not found: $BASE_DIR/templates/main.py"
+fi
+[ -f "$REQUIREMENTS_FILE" ] || fail "Template file not found: $REQUIREMENTS_FILE"
+
 mkdir -p "$BACKUP_DIR"
 
 # -------------------------------------------------
 # Parse arguments
 # -------------------------------------------------
-TARGET_SERVICE="$1"
+TARGET_SERVICE=""
 SKIP_BACKUP=""
 AUTO_YES=""
 
 while [[ $# -gt 0 ]]; do
   case $1 in
-    --skip-backup)
-      SKIP_BACKUP="yes"
-      shift
-      ;;
-    --yes|-y)
-      AUTO_YES="yes"
-      shift
-      ;;
-    --all)
-      TARGET_SERVICE="--all"
-      shift
-      ;;
+    --skip-backup) SKIP_BACKUP="yes"; shift ;;
+    --yes|-y)      AUTO_YES="yes"; shift ;;
+    --all)         TARGET_SERVICE="--all"; shift ;;
     *)
-      if [ -z "$TARGET_SERVICE" ]; then
-        TARGET_SERVICE="$1"
-      fi
+      # Only the first non-flag argument names a service. Seeding this from $1
+      # before the loop made `tixa update --yes` look for a service named
+      # "--yes".
+      if [ -z "$TARGET_SERVICE" ]; then TARGET_SERVICE="$1"; fi
       shift
       ;;
   esac
@@ -97,79 +88,67 @@ echo ""
 # Get list of services to update
 # -------------------------------------------------
 if [ "$TARGET_SERVICE" == "--all" ]; then
-  SERVICES=$(jq -r 'keys[]' "$REGISTRY")
-  SERVICE_COUNT=$(echo "$SERVICES" | wc -l)
-  
-  echo "Services to update: $SERVICE_COUNT"
+  mapfile -t SERVICE_LIST < <(jq -r 'keys[]' "$REGISTRY")
+
+  echo "Services to update: ${#SERVICE_LIST[@]}"
   echo ""
-  echo "$SERVICES" | while read -r svc; do
-    DOMAIN=$(jq -r ".\"$svc\".domain" "$REGISTRY")
-    PORT=$(jq -r ".\"$svc\".port" "$REGISTRY")
-    echo "  • $svc ($DOMAIN:$PORT)"
+  for svc in "${SERVICE_LIST[@]}"; do
+    echo "  • $svc ($(jq -r --arg s "$svc" '.[$s].domain' "$REGISTRY"):$(jq -r --arg s "$svc" '.[$s].port' "$REGISTRY"))"
   done
   echo ""
-  
+
 elif [ -n "$TARGET_SERVICE" ]; then
-  # Check if service exists
-  if ! jq -e ".\"$TARGET_SERVICE\"" "$REGISTRY" > /dev/null 2>&1; then
+  if ! jq -e --arg s "$TARGET_SERVICE" '.[$s]' "$REGISTRY" > /dev/null 2>&1; then
     fail "Service '$TARGET_SERVICE' not found in registry"
   fi
-  
-  SERVICES="$TARGET_SERVICE"
-  SERVICE_COUNT=1
-  
-  DOMAIN=$(jq -r ".\"$TARGET_SERVICE\".domain" "$REGISTRY")
-  PORT=$(jq -r ".\"$TARGET_SERVICE\".port" "$REGISTRY")
-  
+
+  SERVICE_LIST=("$TARGET_SERVICE")
+
   echo "Service to update: $TARGET_SERVICE"
-  echo "Domain: $DOMAIN"
-  echo "Port: $PORT"
+  echo "Domain: $(jq -r --arg s "$TARGET_SERVICE" '.[$s].domain' "$REGISTRY")"
+  echo "Port: $(jq -r --arg s "$TARGET_SERVICE" '.[$s].port' "$REGISTRY")"
   echo ""
-  
+
 else
-  # Interactive selection
   echo "Available services:"
   echo ""
-  
-  jq -r 'keys[]' "$REGISTRY" | while read -r svc; do
-    DOMAIN=$(jq -r ".\"$svc\".domain" "$REGISTRY")
-    PORT=$(jq -r ".\"$svc\".port" "$REGISTRY")
-    echo "  • $svc ($DOMAIN:$PORT)"
-  done
-  
+  jq -r 'to_entries[] | "  • \(.key) (\(.value.domain):\(.value.port))"' "$REGISTRY"
   echo ""
   echo "Options:"
   echo "  • Enter service name to update one service"
   echo "  • Type 'all' to update all services"
   echo ""
-  read -p "Service name (or 'all'): " INPUT
-  
+  read -r -p "Service name (or 'all'): " INPUT
+
   if [ "$INPUT" == "all" ]; then
-    SERVICES=$(jq -r 'keys[]' "$REGISTRY")
-    SERVICE_COUNT=$(echo "$SERVICES" | wc -l)
+    mapfile -t SERVICE_LIST < <(jq -r 'keys[]' "$REGISTRY")
   else
-    if ! jq -e ".\"$INPUT\"" "$REGISTRY" > /dev/null 2>&1; then
+    if ! jq -e --arg s "$INPUT" '.[$s]' "$REGISTRY" > /dev/null 2>&1; then
       fail "Service '$INPUT' not found"
     fi
-    SERVICES="$INPUT"
-    SERVICE_COUNT=1
+    SERVICE_LIST=("$INPUT")
   fi
 fi
+
+SERVICE_COUNT="${#SERVICE_LIST[@]}"
+[ "$SERVICE_COUNT" -gt 0 ] || fail "No services selected"
 
 # -------------------------------------------------
 # Confirmation
 # -------------------------------------------------
 if [ -z "$AUTO_YES" ]; then
   echo ""
-  echo "This will update $SERVICE_COUNT service(s) with:"
-  echo "  • New audio support (10 formats)"
-  echo "  • Updated dependencies (numpy, matplotlib)"
-  echo "  • Enhanced main.py with audio endpoints"
+  echo "This will update $SERVICE_COUNT service(s):"
+  echo "  • Redeploy main.py from the current Tixa template"
+  echo "  • Reinstall dependencies from the pinned requirements file"
+  echo "  • Move the service off root onto its own restricted account"
+  echo "  • Rebind the app to 127.0.0.1 and refresh the Nginx routes"
   echo ""
-  echo "Downtime per service: ~1-2 seconds (during restart)"
+  echo "Each service is health-checked after restart and rolled back if it fails."
+  echo "Downtime per service: a few seconds (during restart)"
   echo ""
-  read -p "Continue? (yes/no): " CONFIRM
-  
+  read -r -p "Continue? (yes/no): " CONFIRM
+
   if [ "$CONFIRM" != "yes" ]; then
     echo "Update cancelled."
     exit 0
@@ -182,168 +161,256 @@ fi
 echo ""
 log_info "Running pre-update checks..."
 
-# Check if FFmpeg is installed
-if ! command -v ffmpeg &> /dev/null; then
+if ! command -v ffmpeg >/dev/null 2>&1; then
   log_warning "FFmpeg not found. Installing..."
   apt-get update -qq
-  apt-get install -y ffmpeg > /dev/null 2>&1
+  DEBIAN_FRONTEND=noninteractive apt-get install -y ffmpeg > /dev/null 2>&1
   log_success "FFmpeg installed"
 else
   log_success "FFmpeg already installed"
 fi
 
-# Check if templates exist
-if [ ! -f "$BASE_DIR/templates/main.py" ]; then
-  fail "Template file not found: $BASE_DIR/templates/main.py"
-fi
-
 log_success "Pre-update checks passed"
+
+tixa_install_nginx_limits "$BASE_DIR"
 
 # -------------------------------------------------
 # Update each service
 # -------------------------------------------------
 UPDATED_COUNT=0
 FAILED_COUNT=0
-FAILED_SERVICES=""
+FAILED_SERVICES=()
+
+# Set while a service is part-way through being replaced. If anything aborts the
+# script in that window, the trap below puts that service back before exiting,
+# instead of leaving it running new code that was never health-checked.
+IN_FLIGHT=0
+
+abort_handler() {
+  local code=$?
+  trap - ERR EXIT
+  set +e
+
+  if [ "$IN_FLIGHT" -eq 1 ]; then
+    echo ""
+    log_error "Update aborted unexpectedly while replacing '${SERVICE:-unknown}'."
+    rollback_service "Unexpected failure."
+  fi
+  exit "$code"
+}
+trap abort_handler ERR EXIT
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-for SERVICE in $SERVICES; do
+# Regenerate the site config and re-attach the existing certificate.
+#
+# Rendering the template alone would discard the listen/ssl directives Certbot
+# added, silently turning an HTTPS site back into HTTP. `certbot install` reuses
+# the certificate already on disk, so this costs no rate-limit quota.
+refresh_nginx_site() {
+  local service="$1" domain="$2" port="$3" backup="$4"
+  local site="/etc/nginx/sites-available/${service}.conf"
+
+  [ -f "$site" ] || return 0
+  cp -p "$site" "$backup" || return 1
+
+  sed \
+    -e "s/{{PROJECT}}/${service}/g" \
+    -e "s/{{DOMAIN}}/${domain}/g" \
+    -e "s/{{PORT}}/${port}/g" \
+    "$BASE_DIR/templates/nginx.conf.tpl" > "$site" || return 1
+
+  ln -sf "$site" "/etc/nginx/sites-enabled/${service}.conf" || return 1
+
+  if [ -d "/etc/letsencrypt/live/${domain}" ]; then
+    if ! certbot install --cert-name "$domain" --nginx --non-interactive >/dev/null 2>&1; then
+      return 1
+    fi
+  fi
+
+  nginx -t >/dev/null 2>&1
+}
+
+restore_nginx_site() {
+  local service="$1" backup="$2"
+  local site="/etc/nginx/sites-available/${service}.conf"
+
+  [ -f "$backup" ] || return 0
+  cp -p "$backup" "$site"
+  if nginx -t >/dev/null 2>&1; then
+    systemctl reload nginx || true
+  fi
+}
+
+for SERVICE in "${SERVICE_LIST[@]}"; do
   echo "Updating service: $SERVICE"
   echo "─────────────────────────────────────────────────────"
-  
-  # Get service details
-  DOMAIN=$(jq -r ".\"$SERVICE\".domain" "$REGISTRY")
-  PORT=$(jq -r ".\"$SERVICE\".port" "$REGISTRY")
-  API_KEY=$(jq -r ".\"$SERVICE\".api_key" "$REGISTRY")
-  
+
+  DOMAIN=$(jq -r --arg s "$SERVICE" '.[$s].domain' "$REGISTRY")
+  PORT=$(jq -r --arg s "$SERVICE" '.[$s].port' "$REGISTRY")
+  API_KEY=$(jq -r --arg s "$SERVICE" '.[$s].api_key' "$REGISTRY")
+
   SERVICE_DIR="/opt/${SERVICE}-processor"
   MAIN_PY="$SERVICE_DIR/main.py"
   VENV_DIR="$SERVICE_DIR/venv"
-  
-  # Validate service directory exists
+  UNIT_FILE="/etc/systemd/system/${SERVICE}-processor.service"
+  SERVICE_NAME="${SERVICE}-processor"
+  SERVICE_USER="$(tixa_service_user "$SERVICE")"
+
+  MAIN_BACKUP="$MAIN_PY.backup-$TIMESTAMP"
+  UNIT_BACKUP="$BACKUP_DIR/${SERVICE}-${TIMESTAMP}.service"
+  NGINX_BACKUP="$BACKUP_DIR/${SERVICE}-${TIMESTAMP}.nginx.conf"
+
   if [ ! -d "$SERVICE_DIR" ]; then
     log_error "Service directory not found: $SERVICE_DIR"
     FAILED_COUNT=$((FAILED_COUNT + 1))
-    FAILED_SERVICES="$FAILED_SERVICES\n  • $SERVICE (directory not found)"
+    FAILED_SERVICES+=("$SERVICE (directory not found)")
     continue
   fi
-  
+  if [ ! -x "$VENV_DIR/bin/python" ]; then
+    log_error "Virtual environment not found: $VENV_DIR"
+    FAILED_COUNT=$((FAILED_COUNT + 1))
+    FAILED_SERVICES+=("$SERVICE (no virtual environment)")
+    continue
+  fi
+
+  # Roll this service back to exactly what was on disk before we touched it.
+  rollback_service() {
+    local reason="$1"
+    log_error "$reason Rolling back..."
+
+    if [ -f "$MAIN_BACKUP" ]; then
+      mv -f "$MAIN_BACKUP" "$MAIN_PY"
+    fi
+    if [ -f "$UNIT_BACKUP" ]; then
+      cp -p "$UNIT_BACKUP" "$UNIT_FILE"
+      systemctl daemon-reload || true
+    fi
+    restore_nginx_site "$SERVICE" "$NGINX_BACKUP"
+
+    systemctl restart "$SERVICE_NAME" >/dev/null 2>&1 || true
+
+    if tixa_wait_for_health "$SERVICE" "$PORT"; then
+      log_success "Rolled back to the previous version (healthy)"
+    else
+      log_error "ROLLBACK DID NOT RECOVER '$SERVICE'."
+      log_error "Backups kept in $BACKUP_DIR — inspect: journalctl -u $SERVICE_NAME -n 50"
+    fi
+    IN_FLIGHT=0
+  }
+
   # Step 1: Backup
   if [ -z "$SKIP_BACKUP" ]; then
     log_info "Creating backup..."
     BACKUP_FILE="$BACKUP_DIR/${SERVICE}-${TIMESTAMP}.tar.gz"
-    tar -czf "$BACKUP_FILE" -C "$SERVICE_DIR" . 2>/dev/null
+    tar -czf "$BACKUP_FILE" -C "$SERVICE_DIR" . 2>/dev/null || true
     log_success "Backup created: $BACKUP_FILE"
   fi
-  
-  # Step 2: Update Python dependencies
-  log_info "Installing new dependencies..."
-  
-  if [ -f "$VENV_DIR/bin/activate" ]; then
-    source "$VENV_DIR/bin/activate"
-    
-    # Install new audio dependencies
-    pip install --quiet --upgrade pip
-    pip install --quiet 'numpy>=1.24.0' 'matplotlib>=3.7.0'
-    
-    deactivate
-    log_success "Dependencies updated"
-  else
-    log_warning "Virtual environment not found, skipping pip install"
+
+  if [ -f "$UNIT_FILE" ]; then cp -p "$UNIT_FILE" "$UNIT_BACKUP"; fi
+
+  # Step 2: Dependencies, from the pinned set the template was tested against
+  log_info "Installing dependencies..."
+  if ! "$VENV_DIR/bin/pip" install --quiet --upgrade pip >/dev/null 2>&1 \
+     || ! "$VENV_DIR/bin/pip" install --quiet -r "$REQUIREMENTS_FILE"; then
+    log_error "Dependency installation failed"
+    FAILED_COUNT=$((FAILED_COUNT + 1))
+    FAILED_SERVICES+=("$SERVICE (dependency install failed)")
+    continue
   fi
-  
+  log_success "Dependencies updated"
+
   # Step 3: Backup current main.py
   if [ -f "$MAIN_PY" ]; then
-    cp "$MAIN_PY" "$MAIN_PY.backup-$TIMESTAMP"
+    cp -p "$MAIN_PY" "$MAIN_BACKUP"
     log_success "Current main.py backed up"
   fi
-  
+
   # Step 4: Deploy new main.py
   log_info "Deploying updated main.py..."
-  
+  IN_FLIGHT=1
   sed \
     -e "s/{{PROJECT}}/${SERVICE}/g" \
     -e "s/{{API_KEY}}/${API_KEY}/g" \
     -e "s|{{BASE_URL}}|https://${DOMAIN}|g" \
     "$BASE_DIR/templates/main.py" \
     > "$MAIN_PY"
-  
   log_success "New main.py deployed"
-  
-  # Step 5: Verify syntax
+
+  # Step 5: Verify syntax with the interpreter that will actually run it
   log_info "Verifying Python syntax..."
-  
-  if python3 -m py_compile "$MAIN_PY" 2>/dev/null; then
+  if PYTHONPYCACHEPREFIX="$(mktemp -d)" "$VENV_DIR/bin/python" -m py_compile "$MAIN_PY" 2>/dev/null; then
     log_success "Syntax check passed"
   else
-    log_error "Syntax check failed! Rolling back..."
-    
-    # Rollback
-    if [ -f "$MAIN_PY.backup-$TIMESTAMP" ]; then
-      mv "$MAIN_PY.backup-$TIMESTAMP" "$MAIN_PY"
-      log_success "Rolled back to previous version"
-    fi
-    
+    if [ -f "$MAIN_BACKUP" ]; then mv -f "$MAIN_BACKUP" "$MAIN_PY"; fi
+    log_error "Syntax check failed! Restored the previous main.py."
+    IN_FLIGHT=0
     FAILED_COUNT=$((FAILED_COUNT + 1))
-    FAILED_SERVICES="$FAILED_SERVICES\n  • $SERVICE (syntax error)"
+    FAILED_SERVICES+=("$SERVICE (syntax error)")
     continue
   fi
-  
-  # Step 6: Restart service
-  log_info "Restarting service (1-2 sec downtime)..."
-  
-  SERVICE_NAME="${SERVICE}-processor"
-  
-  if systemctl restart "$SERVICE_NAME" 2>/dev/null; then
-    sleep 2
-    
-    # Verify service is running
-    if systemctl is-active --quiet "$SERVICE_NAME"; then
-      log_success "Service restarted successfully"
-    else
-      log_error "Service failed to start! Rolling back..."
-      
-      # Rollback
-      if [ -f "$MAIN_PY.backup-$TIMESTAMP" ]; then
-        mv "$MAIN_PY.backup-$TIMESTAMP" "$MAIN_PY"
-        systemctl restart "$SERVICE_NAME" 2>/dev/null
-        log_success "Rolled back to previous version"
-      fi
-      
-      FAILED_COUNT=$((FAILED_COUNT + 1))
-      FAILED_SERVICES="$FAILED_SERVICES\n  • $SERVICE (failed to start)"
-      continue
-    fi
-  else
-    log_error "Failed to restart service"
+
+  # Step 6: Move the service onto its own account and the hardened unit
+  log_info "Applying the hardened systemd unit..."
+  tixa_ensure_service_user "$SERVICE_USER"
+  tixa_apply_ownership "$SERVICE" "$SERVICE_USER"
+
+  sed \
+    -e "s/{{PROJECT}}/${SERVICE}/g" \
+    -e "s/{{PORT}}/${PORT}/g" \
+    -e "s/{{SERVICE_USER}}/${SERVICE_USER}/g" \
+    "$BASE_DIR/templates/service.tpl" \
+    > "$UNIT_FILE"
+  systemctl daemon-reload
+
+  # Step 7: Restart and require a healthy response
+  log_info "Restarting service..."
+  if ! systemctl restart "$SERVICE_NAME" 2>/dev/null; then
+    rollback_service "Service failed to restart."
     FAILED_COUNT=$((FAILED_COUNT + 1))
-    FAILED_SERVICES="$FAILED_SERVICES\n  • $SERVICE (restart failed)"
+    FAILED_SERVICES+=("$SERVICE (restart failed)")
     continue
   fi
-  
-  # Step 7: Verify health endpoint
+
+  # `systemctl is-active` reports a process that is still importing modules as
+  # active and will report a crash-looping unit as active between restarts.
+  # Only a 200 from /health means the deployment actually works.
   log_info "Verifying health endpoint..."
-  
-  sleep 1
-  
-  HEALTH_CHECK=$(curl -s "http://localhost:$PORT/health" 2>/dev/null || echo "")
-  
-  if echo "$HEALTH_CHECK" | grep -q "audio"; then
-    log_success "Audio support verified ✨"
+  if ! tixa_wait_for_health "$SERVICE" "$PORT"; then
+    rollback_service "Service did not report healthy within ${TIXA_HEALTH_TIMEOUT}s."
+    FAILED_COUNT=$((FAILED_COUNT + 1))
+    FAILED_SERVICES+=("$SERVICE (health check failed)")
+    continue
+  fi
+  log_success "Service is healthy"
+
+  # Step 8: Refresh the Nginx routes
+  log_info "Refreshing Nginx configuration..."
+  if refresh_nginx_site "$SERVICE" "$DOMAIN" "$PORT" "$NGINX_BACKUP"; then
+    systemctl reload nginx
+    log_success "Nginx configuration updated"
   else
-    log_warning "Health check returned unexpected response"
+    log_warning "Nginx refresh failed; restored the previous site configuration"
+    restore_nginx_site "$SERVICE" "$NGINX_BACKUP"
   fi
-  
-  # Step 8: Cleanup old backup
-  if [ -f "$MAIN_PY.backup-$TIMESTAMP" ]; then
-    rm "$MAIN_PY.backup-$TIMESTAMP"
+
+  # Step 9: Record the service account, then drop the per-file backups
+  REGISTRY_CANDIDATE="$REGISTRY.update-new"
+  if jq --arg s "$SERVICE" --arg user "$SERVICE_USER" \
+        '.[$s].service_user = $user' "$REGISTRY" > "$REGISTRY_CANDIDATE"; then
+    tixa_commit_registry "$REGISTRY" "$REGISTRY_CANDIDATE"
+  else
+    rm -f "$REGISTRY_CANDIDATE"
+    log_warning "Could not record the service account in the registry"
   fi
-  
+
+  rm -f "$MAIN_BACKUP" "$NGINX_BACKUP"
+  IN_FLIGHT=0
+
   UPDATED_COUNT=$((UPDATED_COUNT + 1))
-  
+
   echo ""
   log_success "Service '$SERVICE' updated successfully!"
   echo ""
@@ -363,25 +430,17 @@ echo "Updated: $UPDATED_COUNT"
 echo "Failed: $FAILED_COUNT"
 echo ""
 
-if [ $FAILED_COUNT -gt 0 ]; then
+if [ "$FAILED_COUNT" -gt 0 ]; then
   echo "Failed services:"
-  echo -e "$FAILED_SERVICES"
+  printf '  • %s\n' "${FAILED_SERVICES[@]}"
   echo ""
 fi
 
-if [ $UPDATED_COUNT -gt 0 ]; then
-  echo "✨ New features available:"
-  echo "  • Audio file support (MP3, WAV, FLAC, AAC, OGG, M4A, WMA, OPUS, AIFF)"
-  echo "  • Waveform generation endpoint"
-  echo "  • Audio streaming endpoint"
-  echo "  • Format conversion endpoint"
-  echo ""
-  
-  echo "📚 Test your services:"
-  for SERVICE in $SERVICES; do
+if [ "$UPDATED_COUNT" -gt 0 ]; then
+  echo "📚 Verify your services:"
+  for SERVICE in "${SERVICE_LIST[@]}"; do
     if systemctl is-active --quiet "${SERVICE}-processor"; then
-      DOMAIN=$(jq -r ".\"$SERVICE\".domain" "$REGISTRY")
-      echo "  • https://${DOMAIN}/health"
+      echo "  • https://$(jq -r --arg s "$SERVICE" '.[$s].domain' "$REGISTRY")/health"
     fi
   done
   echo ""
@@ -392,10 +451,10 @@ if [ -z "$SKIP_BACKUP" ]; then
   echo ""
 fi
 
-if [ $FAILED_COUNT -eq 0 ]; then
+if [ "$FAILED_COUNT" -eq 0 ]; then
   echo "🎉 All services updated successfully!"
-else
-  echo "⚠️  Some services failed to update. Check logs above."
+  exit 0
 fi
 
-echo ""
+echo "⚠️  Some services failed to update. Check the log above."
+exit 1

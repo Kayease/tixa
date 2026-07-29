@@ -1,1 +1,5 @@
 core/registry/services.json
+
+# Bytecode from local syntax checks of templates/main.py
+__pycache__/
+*.pyc

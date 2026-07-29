@@ -34,6 +34,18 @@ Do not include real API keys, certificates, personal data, or production media.
 - Rotate exposed keys with `sudo tixa apikey rotate SERVICE`.
 - Restrict SSH access and keep the operating system patched.
 - Back up original media and persistent state.
-- Review the generated root-running systemd services before using Tixa in a
-  high-security or multi-tenant environment.
+
+Each generated service runs under its own unprivileged `tixa-<project>` account,
+binds only to `127.0.0.1`, and is confined by systemd (`ProtectSystem=strict`
+with write access limited to its own media directory). All public traffic
+reaches it through Nginx, which enforces TLS, the request body limit and the
+rate limits in `/etc/nginx/conf.d/tixa-limits.conf`.
+
+Services created before this was introduced ran as root and listened on all
+interfaces. Move them onto the hardened unit with:
+
+```bash
+sudo tixa self-update
+sudo tixa update --all
+```
 

@@ -23,7 +23,8 @@ case "$CMD" in
     bash "$BASE_DIR/core/list.sh"
     ;;
   delete)
-    bash "$BASE_DIR/core/delete.sh" "$2"
+    shift
+    bash "$BASE_DIR/core/delete.sh" "$@"
     ;;
   migrate)
     shift

@@ -25,10 +25,59 @@ jobs:
             echo "Tag $actual does not match VERSION ($expected)" >&2
             exit 1
           fi
-          bash -n bootstrap.sh install.sh cli/tixa core/*.sh
+          bash -n bootstrap.sh install.sh cli/tixa cli/*.sh core/*.sh
           python3 -m py_compile templates/main.py
+
+      - name: Validate Nginx templates
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends nginx >/dev/null
+
+          # Render the templates with placeholder values and let Nginx parse them.
+          sudo mkdir -p /etc/nginx/conf.d /var/www/images/example/originals
+          sudo cp templates/limits.conf.tpl /etc/nginx/conf.d/tixa-limits.conf
+          sed -e 's/{{PROJECT}}/example/g' \
+              -e 's/{{DOMAIN}}/example.test/g' \
+              -e 's/{{PORT}}/18080/g' \
+              templates/nginx.conf.tpl | sudo tee /etc/nginx/sites-available/example.conf >/dev/null
+          sudo ln -sf /etc/nginx/sites-available/example.conf /etc/nginx/sites-enabled/example.conf
+          sudo nginx -t
+
+      - name: Validate systemd unit template
+        shell: bash
+        run: |
+          set -euo pipefail
+          sed -e 's/{{PROJECT}}/example/g' \
+              -e 's/{{PORT}}/18080/g' \
+              -e 's/{{SERVICE_USER}}/tixa-example/g' \
+              templates/service.tpl > /tmp/example-processor.service
+          systemd-analyze verify /tmp/example-processor.service
+
+      - name: Build release archive and checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}"
+          stage="$(mktemp -d)"
+          mkdir -p "$stage/tixa-${version}"
+
+          # git archive gives byte-reproducible content for the tag, unlike
+          # GitHub's auto-generated source tarballs.
+          git archive --format=tar HEAD | tar -x -C "$stage/tixa-${version}"
+
+          tar -czf "tixa-${version}.tar.gz" -C "$stage" "tixa-${version}"
+          sha256sum "tixa-${version}.tar.gz" > SHA256SUMS
+          cat SHA256SUMS
 
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" --verify-tag --generate-notes --title "Tixa $GITHUB_REF_NAME"
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --generate-notes \
+            --title "Tixa $GITHUB_REF_NAME" \
+            "tixa-${GITHUB_REF_NAME}.tar.gz" \
+            SHA256SUMS

@@ -1,24 +1,8 @@
 # Media Processing Service - Python Dependencies
+#
+# This file is for reading the service code locally. The versions that are
+# actually installed onto a server come from templates/service-requirements.txt,
+# which `tixa create`, `tixa migrate` and `tixa update` all share. Keep the two
+# in step.
 
-# Core Framework
-fastapi>=0.104.0
-uvicorn[standard]>=0.24.0
-python-multipart>=0.0.6
-
-# Image Processing
-pyvips>=2.2.1
-Pillow>=10.1.0
-
-# PDF Processing
-PyMuPDF>=1.23.0
-
-# Audio Processing (NEW)
-numpy>=1.24.0
-matplotlib>=3.7.0
-# wave is included in Python's standard library.
-
-# CORS Support
-python-cors>=1.0.0
-
-# Additional utilities
-aiofiles>=23.2.1
+-r templates/service-requirements.txt

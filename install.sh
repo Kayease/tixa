@@ -197,17 +197,71 @@ cp -r "$REPO_DIR/templates" "$STAGING_DIR/"
 cp "$REPO_DIR/VERSION" "$STAGING_DIR/VERSION"
 printf '%s\n' "${TIXA_REPO_URL:-https://github.com/Kayease/tixa.git}" > "$STAGING_DIR/repository-url"
 
-rm -rf "$RUNTIME_DIR"
-mkdir -p "$RUNTIME_DIR"
+# Build the new runtime beside the old one and swap with a rename. Deleting
+# /opt/tixa before copying left the CLI missing entirely if the copy failed.
+NEW_RUNTIME="${RUNTIME_DIR}.new-$$"
+OLD_RUNTIME="${RUNTIME_DIR}.old-$$"
 
-cp -r "$STAGING_DIR/cli" "$RUNTIME_DIR/"
-cp -r "$STAGING_DIR/core" "$RUNTIME_DIR/"
-cp -r "$STAGING_DIR/templates" "$RUNTIME_DIR/"
-cp "$STAGING_DIR/VERSION" "$RUNTIME_DIR/VERSION"
-cp "$STAGING_DIR/repository-url" "$RUNTIME_DIR/repository-url"
+rm -rf "$NEW_RUNTIME" "$OLD_RUNTIME"
+mkdir -p "$NEW_RUNTIME"
 
-chmod +x "$RUNTIME_DIR/cli/"*
-chmod +x "$RUNTIME_DIR/core/"*
+cp -r "$STAGING_DIR/cli" "$NEW_RUNTIME/"
+cp -r "$STAGING_DIR/core" "$NEW_RUNTIME/"
+cp -r "$STAGING_DIR/templates" "$NEW_RUNTIME/"
+cp "$STAGING_DIR/VERSION" "$NEW_RUNTIME/VERSION"
+cp "$STAGING_DIR/repository-url" "$NEW_RUNTIME/repository-url"
+
+chmod +x "$NEW_RUNTIME/cli/"*
+chmod +x "$NEW_RUNTIME/core/"*
+
+RUNTIME_SWAPPED=0
+restore_runtime() {
+  if [ "$RUNTIME_SWAPPED" -eq 1 ] && [ ! -d "$RUNTIME_DIR" ] && [ -d "$OLD_RUNTIME" ]; then
+    mv "$OLD_RUNTIME" "$RUNTIME_DIR"
+    echo "Error: install failed; the previous Tixa runtime was restored."
+  fi
+  rm -rf "$STAGING_DIR" "$NEW_RUNTIME"
+}
+trap restore_runtime EXIT
+
+if [ -d "$RUNTIME_DIR" ]; then
+  mv "$RUNTIME_DIR" "$OLD_RUNTIME"
+  RUNTIME_SWAPPED=1
+fi
+mv "$NEW_RUNTIME" "$RUNTIME_DIR"
+rm -rf "$OLD_RUNTIME"
+RUNTIME_SWAPPED=0
+
+# --------------------------------------------------
+# Shared Nginx rate-limit zones. The generated site configs reference these
+# zones, so they must exist before any service config is validated.
+# --------------------------------------------------
+LIMITS_SOURCE="$RUNTIME_DIR/templates/limits.conf.tpl"
+LIMITS_TARGET="/etc/nginx/conf.d/tixa-limits.conf"
+
+if [ -f "$LIMITS_SOURCE" ] && command -v nginx >/dev/null 2>&1; then
+  LIMITS_BACKUP=""
+  if [ -f "$LIMITS_TARGET" ]; then
+    LIMITS_BACKUP="$(mktemp /tmp/tixa-limits.XXXXXX)"
+    cp "$LIMITS_TARGET" "$LIMITS_BACKUP"
+  fi
+
+  install -m 644 "$LIMITS_SOURCE" "$LIMITS_TARGET"
+
+  if nginx -t >/dev/null 2>&1; then
+    systemctl reload nginx >/dev/null 2>&1 || true
+    echo "✅ Nginx rate-limit configuration installed"
+  else
+    echo "⚠️  Nginx rejected the Tixa rate-limit configuration; reverting it."
+    if [ -n "$LIMITS_BACKUP" ]; then
+      cp "$LIMITS_BACKUP" "$LIMITS_TARGET"
+    else
+      rm -f "$LIMITS_TARGET"
+    fi
+  fi
+
+  [ -n "$LIMITS_BACKUP" ] && rm -f "$LIMITS_BACKUP"
+fi
 
 # --------------------------------------------------
 # CLI launcher
