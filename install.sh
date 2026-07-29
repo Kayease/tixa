@@ -15,6 +15,52 @@ if [ "$(id -u)" -ne 0 ]; then
   exit 1
 fi
 
+if [ ! -r /etc/os-release ]; then
+  echo "Error: cannot identify this operating system"
+  exit 1
+fi
+
+# Tixa currently supports Debian-family servers. Install only packages that
+# are not already present, leaving existing package configuration unchanged.
+. /etc/os-release
+case "${ID:-}:${ID_LIKE:-}" in
+  *debian*|*ubuntu*) ;;
+  *)
+    echo "Error: unsupported OS '${PRETTY_NAME:-unknown}'. Tixa supports Debian/Ubuntu."
+    exit 1
+    ;;
+esac
+
+REQUIRED_PACKAGES=(
+  python3 python3-pip python3-venv
+  nginx certbot python3-certbot-nginx
+  ffmpeg libvips-dev libmagic1
+  jq dnsutils curl openssl git ca-certificates
+)
+MISSING_PACKAGES=()
+
+for PACKAGE in "${REQUIRED_PACKAGES[@]}"; do
+  if ! dpkg-query -W -f='${Status}' "$PACKAGE" 2>/dev/null | grep -q '^install ok installed$'; then
+    MISSING_PACKAGES+=("$PACKAGE")
+  fi
+done
+
+if [ "${#MISSING_PACKAGES[@]}" -gt 0 ]; then
+  echo "Installing required system packages: ${MISSING_PACKAGES[*]}"
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+  apt-get install -y --no-install-recommends "${MISSING_PACKAGES[@]}"
+else
+  echo "All required system packages are already installed"
+fi
+
+if ! python3 -m venv --help >/dev/null 2>&1; then
+  echo "Error: Python virtual environments are unavailable after installing python3-venv"
+  exit 1
+fi
+
+systemctl enable --now nginx
+
 for REQUIRED_DIR in cli core templates; do
   if [ ! -d "$REPO_DIR/$REQUIRED_DIR" ]; then
     echo "Error: missing required directory: $REPO_DIR/$REQUIRED_DIR"
@@ -92,6 +138,7 @@ trap 'rm -rf "$STAGING_DIR"' EXIT
 cp -r "$REPO_DIR/cli" "$STAGING_DIR/"
 cp -r "$REPO_DIR/core" "$STAGING_DIR/"
 cp -r "$REPO_DIR/templates" "$STAGING_DIR/"
+printf '%s\n' "${TIXA_REPO_URL:-https://github.com/Kayease/tixa.git}" > "$STAGING_DIR/repository-url"
 
 rm -rf "$RUNTIME_DIR"
 mkdir -p "$RUNTIME_DIR"
@@ -99,6 +146,7 @@ mkdir -p "$RUNTIME_DIR"
 cp -r "$STAGING_DIR/cli" "$RUNTIME_DIR/"
 cp -r "$STAGING_DIR/core" "$RUNTIME_DIR/"
 cp -r "$STAGING_DIR/templates" "$RUNTIME_DIR/"
+cp "$STAGING_DIR/repository-url" "$RUNTIME_DIR/repository-url"
 
 chmod +x "$RUNTIME_DIR/cli/"*
 chmod +x "$RUNTIME_DIR/core/"*

@@ -247,7 +247,7 @@ for SERVICE in $SERVICES; do
     
     # Install new audio dependencies
     pip install --quiet --upgrade pip
-    pip install --quiet numpy>=1.24.0 matplotlib>=3.7.0
+    pip install --quiet 'numpy>=1.24.0' 'matplotlib>=3.7.0'
     
     deactivate
     log_success "Dependencies updated"

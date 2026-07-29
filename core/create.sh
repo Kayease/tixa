@@ -20,6 +20,18 @@ fail() {
   exit 1
 }
 
+if [ "$(id -u)" -ne 0 ]; then
+  fail "Run this command as root: sudo tixa create"
+fi
+
+for COMMAND in jq curl dig openssl python3 nginx certbot systemctl; do
+  command -v "$COMMAND" >/dev/null 2>&1 || \
+    fail "Missing required command '$COMMAND'. Re-run the latest Tixa installer."
+done
+
+python3 -m venv --help >/dev/null 2>&1 || \
+  fail "Python venv support is missing. Re-run the latest Tixa installer."
+
 # -------------------------------------------------
 # Startup checks
 # -------------------------------------------------
@@ -48,6 +60,19 @@ read -p "Domain (e.g. img.example.com): " DOMAIN
 [ -z "$DOMAIN" ] && fail "Domain cannot be empty"
 
 PROJECT_LOWER="${PROJECT,,}"
+
+if [[ ! "$PROJECT_LOWER" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]]; then
+  fail "Project name must contain only letters, numbers, and hyphens (maximum 63 characters)"
+fi
+
+DOMAIN="${DOMAIN,,}"
+if [[ ! "$DOMAIN" =~ ^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$ ]]; then
+  fail "Enter a valid public domain name"
+fi
+
+if [[ "$DOMAIN" == *.local ]]; then
+  fail ".local domains cannot receive public Let's Encrypt certificates. Use a real public domain."
+fi
 
 # -------------------------------------------------
 # Registry validation
@@ -212,8 +237,6 @@ echo "✅ SSL certificate installed"
 # Registry update (LAST STEP)
 # -------------------------------------------------
 [ ! -f "$REGISTRY" ] && echo "{}" > "$REGISTRY"
-
-SSL_STATUS="installed"
 
 jq ". + {
   \"${PROJECT_LOWER}\": {

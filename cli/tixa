@@ -30,6 +30,10 @@ case "$CMD" in
     shift
     bash "$BASE_DIR/core/update.sh" "$@"
     ;;
+  self-update)
+    shift
+    bash "$BASE_DIR/core/self-update.sh" "$@"
+    ;;
   uninstall)
     shift
     bash "$BASE_DIR/core/uninstall.sh" "$@"
@@ -50,6 +54,7 @@ case "$CMD" in
     echo "  tixa ssl renew --all"
     echo ""
     echo "Updates:"
+    echo "  tixa self-update            Update the Tixa CLI and templates"
     echo "  tixa update <name>          Update specific service"
     echo "  tixa update --all           Update all services"
     echo "  tixa update --all --yes     Update all (skip confirmation)"

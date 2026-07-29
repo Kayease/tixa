@@ -1,38 +1,46 @@
-root@srv1010579:/var/www/Project/tixa/core# cat sslemail.sh
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 STATE_DIR="/var/lib/tixa"
-EMAIL_FILE="$STATE_DIR/sslemail"
+REGISTRY="$STATE_DIR/registry.json"
+TARGET="${1:-}"
 
-mkdir -p "$STATE_DIR"
+if [ "$(id -u)" -ne 0 ]; then
+  echo "Error: run this command with sudo"
+  exit 1
+fi
 
-case "$1" in
-  set)
-    read -p "Enter SSL email (Certbot): " EMAIL
+if [ ! -f "$REGISTRY" ]; then
+  echo "Error: no Tixa services are registered"
+  exit 1
+fi
 
-    if [[ -z "$EMAIL" ]]; then
-      echo "❌ Email cannot be empty"
-      exit 1
-    fi
+renew_project() {
+  local project="$1"
+  local domain
 
-    echo "$EMAIL" > "$EMAIL_FILE"
-    chmod 600 "$EMAIL_FILE"
+  if ! jq -e --arg project "$project" '.[$project]' "$REGISTRY" >/dev/null; then
+    echo "Error: service '$project' was not found"
+    return 1
+  fi
 
-    echo "✅ SSL email saved successfully"
-    ;;
-  show)
-    if [ ! -f "$EMAIL_FILE" ]; then
-      echo "❌ SSL email not configured"
-      echo "👉 Run: tixa sslemail set"
-      exit 1
-    fi
+  domain="$(jq -r --arg project "$project" '.[$project].domain' "$REGISTRY")"
+  echo "Renewing SSL certificate for $project ($domain)..."
+  certbot --nginx --cert-name "$domain" -d "$domain" --non-interactive
+  jq --arg project "$project" '.[$project].ssl = "installed"' "$REGISTRY" > "$REGISTRY.tmp"
+  mv "$REGISTRY.tmp" "$REGISTRY"
+  chmod 600 "$REGISTRY"
+}
 
-    echo "📧 SSL Email: $(cat "$EMAIL_FILE")"
-    ;;
-  *)
-    echo "Usage:"
-    echo "  tixa sslemail set"
-    echo "  tixa sslemail show"
-    ;;
-esac
+if [ "$TARGET" = "all" ]; then
+  while IFS= read -r project; do
+    renew_project "$project"
+  done < <(jq -r 'keys[]' "$REGISTRY")
+elif [ -n "$TARGET" ]; then
+  renew_project "${TARGET,,}"
+else
+  echo "Usage: tixa ssl renew <project|--all>"
+  exit 1
+fi
+
+systemctl reload nginx

@@ -37,25 +37,33 @@ A comprehensive FastAPI-based media processing service that handles images, vide
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/tixa.git
+git clone https://github.com/Kayease/tixa.git
 cd tixa
 ```
 
-2. Install dependencies:
+2. Run the installer as root:
 ```bash
-# Install Python dependencies
-pip install -r requirements.txt
-
-# Install FFmpeg (required for video and audio processing)
-sudo apt update && sudo apt install -y ffmpeg
-
-# Install libvips (required for image processing)
-sudo apt install -y libvips libvips-dev
+sudo bash install.sh
 ```
 
-3. Run the installation script:
+The repository may be cloned anywhere. The installer detects its own location,
+installs missing Debian/Ubuntu system packages, copies the Tixa runtime to
+`/opt/tixa`, and preserves persistent state in `/var/lib/tixa`.
+
+3. Create a service using a real public domain whose DNS A record points to
+the VPS:
 ```bash
-bash install.sh
+sudo tixa create
+```
+
+### Updating Tixa
+
+After new changes are pushed to the `main` branch, update the installed CLI and
+templates, then deploy the new template to existing services:
+
+```bash
+sudo tixa self-update
+sudo tixa update --all
 ```
 
 ## Audio Support
