@@ -1,4 +1,4 @@
-# Audio Processing Architecture
+# Tixa Audio Processing Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐

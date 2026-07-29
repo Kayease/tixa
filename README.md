@@ -94,6 +94,38 @@ such as `.local` cannot receive Let's Encrypt certificates.
 
 ### 2. Install Tixa
 
+Install directly without keeping a repository clone:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Kayease/tixa/main/bootstrap.sh | sudo bash
+```
+
+Because this executes a remote script as root, security-conscious users should
+download and inspect it first:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/Kayease/tixa/main/bootstrap.sh
+less bootstrap.sh
+sudo bash bootstrap.sh
+rm bootstrap.sh
+```
+
+To install a tagged release instead of the latest `main` branch:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Kayease/tixa/main/bootstrap.sh \
+  | sudo TIXA_VERSION=v1.0.0 bash
+```
+
+For unattended provisioning, supply the certificate email explicitly:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Kayease/tixa/main/bootstrap.sh \
+  | sudo TIXA_SSL_EMAIL=admin@example.com bash
+```
+
+Alternatively, install from a clone:
+
 ```bash
 git clone https://github.com/Kayease/tixa.git
 cd tixa
@@ -229,7 +261,7 @@ GET /process/audio/convert/mp3/podcasts/episode.wav?bitrate=320k
 | `GET` | `/health` | Check service health | No |
 
 Use `/docs` on a running service for its generated OpenAPI interface. More
-audio examples are available in [AUDIO_SUPPORT.md](AUDIO_SUPPORT.md).
+audio examples are available in the [audio API guide](docs/audio-api.md).
 
 ## CLI reference
 
@@ -379,11 +411,9 @@ Nginx, DNS, firewall, and any CDN cache in front of the VPS.
 
 ## Documentation
 
-- [Audio support](AUDIO_SUPPORT.md)
-- [Architecture](ARCHITECTURE.md)
-- [Installation details](INSTALLATION.md)
-- [Deployment guide](DEPLOYMENT_GUIDE.md)
-- [Update guide](UPDATE_GUIDE.md)
+- [Documentation index](docs/README.md)
+- [Audio API guide](docs/audio-api.md)
+- [Audio processing architecture](docs/audio-architecture.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 

@@ -1,4 +1,4 @@
-# Audio Support Documentation
+# Tixa Audio API Guide
 
 ## Overview
 The media processing service now supports comprehensive audio file handling with multiple formats, waveform generation, streaming, and format conversion capabilities.

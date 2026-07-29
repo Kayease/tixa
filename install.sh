@@ -157,7 +157,12 @@ if [ ! -f "$SSL_EMAIL_FILE" ]; then
   echo "  tixa sslemail set"
   echo ""
 
-  read -p "Enter email for SSL certificates: " SSL_EMAIL
+  SSL_EMAIL="${TIXA_SSL_EMAIL:-}"
+  if [ -z "$SSL_EMAIL" ]; then
+    read -r -p "Enter email for SSL certificates: " SSL_EMAIL
+  else
+    echo "Using SSL email supplied by TIXA_SSL_EMAIL"
+  fi
 
   if [[ -z "$SSL_EMAIL" ]]; then
     echo "❌ SSL email is required to continue"
