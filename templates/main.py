@@ -179,7 +179,7 @@ async def upload_file(
 # ---------------------------
 # Image Processing (Enhanced)
 # ---------------------------
-@app.get("/process/{width}/{height}/{image_path:path}")
+@app.get("/process/{width:int}/{height:int}/{image_path:path}")
 async def process_image(
     width: int,
     height: int,
@@ -230,7 +230,7 @@ async def process_image(
 # ---------------------------
 # Image Thumbnail (Preserve Aspect Ratio)
 # ---------------------------
-@app.get("/thumbnail/{width}/{height}/{image_path:path}")
+@app.get("/thumbnail/{width:int}/{height:int}/{image_path:path}")
 async def generate_thumbnail(
     width: int,
     height: int,

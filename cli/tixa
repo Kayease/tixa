@@ -34,6 +34,10 @@ case "$CMD" in
     shift
     bash "$BASE_DIR/core/sslemail.sh" "$@"
     ;;
+  apikey)
+    shift
+    bash "$BASE_DIR/core/apikey.sh" "$@"
+    ;;
   update)
     shift
     bash "$BASE_DIR/core/update.sh" "$@"
@@ -62,12 +66,16 @@ case "$CMD" in
     echo "  tixa sslemail show"
     echo "  tixa ssl renew <name>"
     echo "  tixa ssl renew --all"
+    echo "  tixa apikey rotate <name>   Rotate one service API key"
+    echo "  tixa apikey rotate --all    Rotate every service API key"
     echo ""
     echo "Updates:"
     echo "  tixa self-update            Update the Tixa CLI and templates"
     echo "  tixa update <name>          Update specific service"
     echo "  tixa update --all           Update all services"
     echo "  tixa update --all --yes     Update all (skip confirmation)"
+    echo "  tixa update <name> --skip-backup"
+    echo "  tixa update --all --skip-backup"
     echo ""
     echo "Maintenance:"
     echo "  tixa uninstall"

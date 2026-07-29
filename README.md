@@ -78,6 +78,29 @@ sudo tixa self-update
 sudo tixa update --all
 ```
 
+To update without creating a rollback archive:
+
+```bash
+sudo tixa update service-name --skip-backup
+sudo tixa update --all --skip-backup
+```
+
+Skipping backups saves disk space but removes Tixa's archive-based recovery
+option for that update.
+
+### Rotating API keys
+
+Rotate the API key for one existing service or every registered service:
+
+```bash
+sudo tixa apikey rotate service-name
+sudo tixa apikey rotate --all
+```
+
+Use `--yes` for non-interactive automation. Rotation validates and restarts each
+service, checks its internal health endpoint, updates the registry only after a
+successful restart, and restores the previous key if validation fails.
+
 ### Migrating a service
 
 To change both a service name and its domain, first point the new domain's DNS
